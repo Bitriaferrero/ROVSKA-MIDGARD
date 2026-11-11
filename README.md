@@ -60,8 +60,13 @@ Las vistas internas usan hash (`#midgard`, `#netmap`, `#librenms`). Las URLs ant
 - `nmap` reutiliza los hosts que ya ha descubierto `arp-scan` en la misma
   ejecución. Así un barrido de `/24` no lanza `-Pn`, versión y SO contra los
   256 hosts: solo contra los activos, y el escaneo termina dentro del tiempo
-  límite con sus puertos y hallazgos. Si no hay descubrimiento previo, se usa
-  el objetivo original.
+  límite con sus puertos y hallazgos.
+- Si `arp-scan` no ve nada (objetivo enrutado o en otra subred), `nmap` hace
+  un descubrimiento `-sn` y escanea solo los hosts que responden. Si no hay
+  ninguno, se omite el escaneo de puertos en vez de marcar todo el rango como
+  activo. El objetivo debe ser la subred real de los equipos (por ejemplo
+  `192.168.1.0/24` si ahí están Proxmox y sus invitados), no un rango
+  arbitrario: un rango equivocado produce 0 puertos, 0 CVE y hosts fantasma.
 - La detección de SO combina `nmap -O`, banners de servicio, SNMP, fabricante
   de la MAC y una sonda TTL: 64 ≈ Linux/Unix, 128 ≈ Windows y 255 ≈ equipo de
   red. La versión exacta de un banner de servicio (p. ej. el FTP de RouterOS)
@@ -72,6 +77,14 @@ Las vistas internas usan hash (`#midgard`, `#netmap`, `#librenms`). Las URLs ant
   `Guest Proxmox (LXC/VM)`, `LXC`, `Máquina virtual (QEMU/KVM/VMware/VirtualBox)`
   y `Router`. Los escaneos antiguos se reclasifican al abrir el panel, sin
   repetir el escaneo.
+- La **tuerca** situada junto a *Resumen general* ordena la lista por IP,
+  nombre de host o estado real de Proxmox. El estado usa `running`/`stopped`
+  (los LXC/VM de cada nodo siguen la misma regla), no el color de riesgo. Un
+  clic ordena y otro invierte el sentido. El orden y el ancho de la barra se
+  guardan en el navegador (`localStorage`), no en el servidor.
+- El borde entre la lista y el detalle se puede **arrastrar** para ensanchar o
+  estrechar la barra (300–680 px). Doble clic lo devuelve a 440 px. Funciona en
+  todas las pestañas; por debajo de 980 px de ancho la barra ocupa la pantalla.
 
 ## Proxmox (opcional, API de solo lectura)
 
