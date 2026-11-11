@@ -63,7 +63,88 @@ const state = {
   pve: {
     expanded: new Set(),
   },
+  listSort: { key: "ip", dir: 1 },
+  listSortOpen: false,
+  sideWidth: 440,
 };
+
+const LIST_PREFS_KEY = "rovska.listPrefs";
+const SORT_OPTIONS = [["ip", "IP"], ["name", "Nombre"], ["status", "Estado"]];
+
+function loadListPrefs() {
+  try {
+    const raw = localStorage.getItem(LIST_PREFS_KEY);
+    const prefs = raw ? JSON.parse(raw) : null;
+    if (prefs && typeof prefs === "object") {
+      if (SORT_OPTIONS.some(([key]) => key === prefs.sortKey)) state.listSort.key = prefs.sortKey;
+      if (prefs.sortDir === 1 || prefs.sortDir === -1) state.listSort.dir = prefs.sortDir;
+      if (Number.isFinite(prefs.sideWidth)) {
+        state.sideWidth = Math.min(680, Math.max(300, prefs.sideWidth));
+      }
+    }
+  } catch {
+    /* Preferencias corruptas o almacenamiento no disponible: valores por defecto. */
+  }
+  document.documentElement.style.setProperty("--side-w", `${state.sideWidth}px`);
+}
+
+function saveListPrefs() {
+  try {
+    localStorage.setItem(
+      LIST_PREFS_KEY,
+      JSON.stringify({
+        sortKey: state.listSort.key,
+        sortDir: state.listSort.dir,
+        sideWidth: state.sideWidth,
+      }),
+    );
+  } catch {
+    /* Sin almacenamiento: el orden y el ancho solo duran esta sesión. */
+  }
+}
+
+function ipSortValue(value) {
+  const text = String(value || "").trim();
+  const v4 = text.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!v4) return Number.MAX_SAFE_INTEGER;
+  return v4.slice(1).reduce((acc, part) => acc * 256 + Number(part), 0);
+}
+
+function guestPower(guest) {
+  const status = String(guest?.status || "").toLowerCase();
+  if (status === "running" || status === "online") return 0;
+  if (status === "stopped" || status === "offline") return 2;
+  return 1;
+}
+
+function hostPower(host) {
+  if (host?.proxmox) {
+    return String(host.proxmox.status || "").toLowerCase() === "online" ? 0 : 2;
+  }
+  return 0;
+}
+
+function compareListItems(a, b, kind) {
+  const key = state.listSort.key;
+  let result = 0;
+  if (key === "name") {
+    const an = kind === "guest" ? a?.name || a?.ip || "" : hostName(a) || a?.ip || "";
+    const bn = kind === "guest" ? b?.name || b?.ip || "" : hostName(b) || b?.ip || "";
+    result = String(an).localeCompare(String(bn), "es", { numeric: true, sensitivity: "base" });
+  } else if (key === "status") {
+    const ap = kind === "guest" ? guestPower(a) : hostPower(a);
+    const bp = kind === "guest" ? guestPower(b) : hostPower(b);
+    result = ap - bp;
+  }
+  if (result === 0) {
+    const ai = ipSortValue(kind === "guest" ? a?.ip || a?.host_ip : a?.ip);
+    const bi = ipSortValue(kind === "guest" ? b?.ip || b?.host_ip : b?.ip);
+    result = ai - bi;
+  }
+  return result * state.listSort.dir;
+}
+
+loadListPrefs();
 
 const $ = (sel) => document.querySelector(sel);
 const nav = $("#nav");
@@ -446,17 +527,34 @@ function pveGuestRowHtml(guest) {
   </button>`;
 }
 
+function sortMenuHtml() {
+  const { key, dir } = state.listSort;
+  const arrow = dir === 1 ? "↑" : "↓";
+  const options = SORT_OPTIONS.map(
+    ([value, label]) => `<button class="sort-opt${key === value ? " active" : ""}" type="button" data-sort="${value}" aria-pressed="${key === value}">
+      <span>${esc(label)}</span><span class="sort-arrow">${key === value ? arrow : ""}</span>
+    </button>`,
+  ).join("");
+  return `<div class="side-sort" id="side-sort">
+    <div class="side-sort-title">Ordenar por</div>${options}
+  </div>`;
+}
+
 function renderSidebar() {
   const d = state.data;
   if (!d) {
     sidebar.innerHTML = `<div class="side-empty">Cargando hosts…</div>`;
     return;
   }
+  const prevList = sidebar.querySelector(".host-list");
+  const scrollTop = prevList ? prevList.scrollTop : 0;
   const g = d.global || {};
   const counts = g.counts || {};
   const topLevel = (d.hosts || []).filter((host) => !host.parent_ip);
-  const hosts = topLevel.filter((host) => hostMatches(host, state.query)
-    || (host.proxmox?.guests || []).some((guest) => pveGuestMatches(guest, state.query)));
+  const hosts = topLevel
+    .filter((host) => hostMatches(host, state.query)
+      || (host.proxmox?.guests || []).some((guest) => pveGuestMatches(guest, state.query)))
+    .sort((a, b) => compareListItems(a, b, "host"));
   const isOverview = state.view === "overview";
   const emptyLabel = g.active_sweep
     ? `Barrido en curso${g.target ? ` · ${g.target}` : ""}…`
@@ -470,7 +568,7 @@ function renderSidebar() {
     const active = state.view === "host" && state.hostIp === host.ip;
     const name = hostName(host);
     const pve = host.proxmox;
-    const guests = pve?.guests || [];
+    const guests = [...(pve?.guests || [])].sort((a, b) => compareListItems(a, b, "guest"));
     const expanded = state.pve.expanded.has(host.ip);
     const chevron = guests.length
       ? `<span class="pve-chevron${expanded ? " open" : ""}" data-pve-toggle="${esc(host.ip)}" title="${expanded ? "Contraer" : "Desplegar"} invitados">${expanded ? "▾" : "▸"}</span>`
@@ -492,17 +590,23 @@ function renderSidebar() {
   }).join("");
 
   sidebar.innerHTML = `<div class="side-head">
-    <button class="global-btn${isOverview ? " active" : ""}" id="global-btn" type="button">
-      <span>Resumen general</span><span class="count">${(d.scans || []).length} escaneos</span>
-    </button>
+    <div class="side-actions">
+      <button class="global-btn${isOverview ? " active" : ""}" id="global-btn" type="button">
+        <span>Resumen general</span><span class="count">${(d.scans || []).length} escaneos</span>
+      </button>
+      <button class="icon-btn side-gear${state.listSortOpen ? " active" : ""}" id="side-gear" type="button" title="Ordenar la lista" aria-label="Ordenar la lista" aria-expanded="${state.listSortOpen}">⚙</button>
+    </div>
+    ${state.listSortOpen ? sortMenuHtml() : ""}
     <div class="side-stats">
       <div class="side-stat crit"><div class="n">${counts["CRÍTICO"] || 0}</div><div class="l">crít</div></div>
       <div class="side-stat high"><div class="n">${counts["ALTO"] || 0}</div><div class="l">alto</div></div>
       <div class="side-stat med"><div class="n">${counts["MEDIO"] || 0}</div><div class="l">med</div></div>
-      <div class="side-stat ok"><div class="n">${topLevel.length}</div><div class="l">hosts</div></div>
+      <div class="side-stat ok"><div class="n">${(d.hosts || []).length}</div><div class="l">hosts</div></div>
     </div>
   </div>
   <div class="host-list">${rows || `<div class="side-empty">${esc(emptyLabel)}</div>`}</div>`;
+  const nextList = sidebar.querySelector(".host-list");
+  if (nextList && scrollTop) nextList.scrollTop = scrollTop;
 }
 
 function renderFoot() {
@@ -2913,6 +3017,7 @@ async function submitImport(form) {
 nav.addEventListener("click", (event) => {
   const button = event.target.closest(".nav-btn");
   if (!button || !button.dataset.view) return;
+  state.listSortOpen = false;
   state.view = button.dataset.view;
   if (state.view !== "host") state.hostIp = null;
   setHash(state.view);
@@ -2958,8 +3063,31 @@ detail.addEventListener("change", (event) => {
 });
 
 sidebar.addEventListener("click", (event) => {
+  const gear = event.target.closest("#side-gear");
+  if (gear) {
+    event.preventDefault();
+    event.stopPropagation();
+    state.listSortOpen = !state.listSortOpen;
+    renderSidebar();
+    return;
+  }
+  const sortBtn = event.target.closest("[data-sort]");
+  if (sortBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    const key = sortBtn.dataset.sort;
+    if (state.listSort.key === key) state.listSort.dir = state.listSort.dir === 1 ? -1 : 1;
+    else {
+      state.listSort.key = key;
+      state.listSort.dir = 1;
+    }
+    saveListPrefs();
+    renderSidebar();
+    return;
+  }
   const global = event.target.closest("#global-btn");
   if (global) {
+    state.listSortOpen = false;
     state.view = "overview";
     state.hostIp = null;
     setHash("overview");
@@ -2978,6 +3106,7 @@ sidebar.addEventListener("click", (event) => {
   }
   const child = event.target.closest(".host-child-row");
   if (child) {
+    state.listSortOpen = false;
     if (child.dataset.host) {
       state.hostIp = child.dataset.host;
       state.view = "host";
@@ -2991,11 +3120,69 @@ sidebar.addEventListener("click", (event) => {
   }
   const row = event.target.closest(".host-row");
   if (!row) return;
+  state.listSortOpen = false;
   state.hostIp = row.dataset.host;
   state.view = "host";
   state.hostTab = "summary";
   setHash("");
   render();
+});
+
+const sideResizer = $("#side-resizer");
+
+function applySideWidth() {
+  document.documentElement.style.setProperty("--side-w", `${state.sideWidth}px`);
+}
+
+sideResizer?.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = state.sideWidth;
+  sideResizer.setPointerCapture(event.pointerId);
+  document.body.classList.add("resizing");
+  const onMove = (moveEvent) => {
+    state.sideWidth = Math.min(680, Math.max(300, startWidth + moveEvent.clientX - startX));
+    applySideWidth();
+  };
+  const onUp = () => {
+    document.body.classList.remove("resizing");
+    sideResizer.removeEventListener("pointermove", onMove);
+    sideResizer.removeEventListener("pointerup", onUp);
+    sideResizer.removeEventListener("pointercancel", onUp);
+    saveListPrefs();
+  };
+  sideResizer.addEventListener("pointermove", onMove);
+  sideResizer.addEventListener("pointerup", onUp);
+  sideResizer.addEventListener("pointercancel", onUp);
+});
+
+sideResizer?.addEventListener("dblclick", () => {
+  state.sideWidth = 440;
+  applySideWidth();
+  saveListPrefs();
+});
+
+sideResizer?.addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+  event.preventDefault();
+  if (event.key === "Home") state.sideWidth = 440;
+  else {
+    const delta = event.key === "ArrowRight" ? 20 : -20;
+    state.sideWidth = Math.min(680, Math.max(300, state.sideWidth + delta));
+  }
+  applySideWidth();
+  saveListPrefs();
+});
+
+document.addEventListener("click", (event) => {
+  if (!state.listSortOpen) return;
+  // composedPath conserva los ancestros originales aunque el clic haya
+  // vuelto a pintar la barra lateral y el destino ya esté desmontado.
+  const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+  if (path.some((node) => node instanceof Element && node.id === "sidebar")) return;
+  if (event.target.closest && event.target.closest("#sidebar")) return;
+  state.listSortOpen = false;
+  renderSidebar();
 });
 
 detail.addEventListener("click", (event) => {
