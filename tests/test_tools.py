@@ -150,19 +150,43 @@ class NmapTests(unittest.TestCase):
         self.assertNotIn("10.0.1.5", argv)
         self.assertNotIn("10.0.0.0/24", argv)
 
-    def test_scan_keeps_target_without_discovery(self) -> None:
-        runner = FakeRunner(files={"nmap_ports.xml": self.XML}, name="docker")
-        ctx = _ctx(
-            runner,
-            [Host(ip="10.0.0.5")],
-            {"nmap_ports": "22,80"},
-            target="10.0.0.0/24",
+    PING_XML = """<?xml version="1.0"?>
+<nmaprun>
+  <host><status state="up"/><address addr="10.0.0.5" addrtype="ipv4"/></host>
+  <host><status state="up"/><address addr="10.0.0.9" addrtype="ipv4"/></host>
+  <host><status state="down"/><address addr="10.0.0.10" addrtype="ipv4"/></host>
+</nmaprun>
+"""
+
+    def test_scan_discovers_live_hosts_without_arp(self) -> None:
+        """En una subred enrutada ARP no ve nada: se descubre con nmap -sn."""
+        runner = FakeRunner(
+            files={"nmap_ping.xml": self.PING_XML, "nmap_ports.xml": self.XML},
+            name="docker",
         )
-        # Sin hosts previos, nmap debe recibir el objetivo original.
-        ctx.hosts = []
+        ctx = _ctx(runner, [], {"nmap_ports": "22,80"}, target="10.0.0.0/24")
         result = NmapTool().run(ctx)
         self.assertTrue(result.ok)
-        self.assertIn("10.0.0.0/24", runner.calls[0])
+        self.assertIn("-sn", runner.calls[0])
+        self.assertEqual(runner.calls[0][-1], "10.0.0.0/24")
+        port_argv = runner.calls[1]
+        self.assertIn("10.0.0.5", port_argv)
+        self.assertIn("10.0.0.9", port_argv)
+        self.assertNotIn("10.0.0.10", port_argv)
+        self.assertNotIn("10.0.0.0/24", port_argv)
+
+    def test_scan_skips_when_discovery_finds_nothing(self) -> None:
+        """Sin hosts vivos no se escanea el /24 con -Pn (evita 256 fantasmas)."""
+        runner = FakeRunner(
+            files={"nmap_ping.xml": '<?xml version="1.0"?><nmaprun></nmaprun>'},
+            name="docker",
+        )
+        ctx = _ctx(runner, [], {"nmap_ports": "22,80"}, target="10.0.0.0/24")
+        result = NmapTool().run(ctx)
+        self.assertTrue(result.ok)
+        self.assertTrue(result.skipped)
+        self.assertEqual(len(runner.calls), 1)
+        self.assertIn("-sn", runner.calls[0])
 
     def test_optional_snmp_probe_is_udp_161(self) -> None:
         runner = FakeRunner(

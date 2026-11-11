@@ -69,6 +69,14 @@ class NmapTool(Tool):
             self._discovery(ctx, result)
             return result
 
+        # Sin hosts activos no se escanea el rango completo con -Pn: eso
+        # marcaría las 256 direcciones como "up" y agotaría el tiempo.
+        if not self._scan_targets(ctx):
+            result.skipped = True
+            result.meta["reason"] = "sin hosts activos"
+            ctx.warn("nmap: el descubrimiento no encontró hosts activos; se omite el escaneo de puertos")
+            return result
+
         explicit_ports = str(options.get("nmap_ports", "")).strip()
         top_ports = int(options.get("top_ports", 1000))
         scripts = list(SAFE_SCRIPTS)
@@ -119,34 +127,93 @@ class NmapTool(Tool):
 
     # -- pasadas -------------------------------------------------------
 
-    def _scan_targets(self, ctx: ToolContext) -> list[str]:
-        """Limita nmap a los hosts ya descubiertos en la misma ejecución.
+    def _scan_targets(self, ctx: ToolContext, *, discover: bool = True) -> list[str]:
+        """Limita nmap a los hosts activos del objetivo.
 
         Sin esto, un perfil sobre ``192.168.1.0/24`` con ``-Pn`` marca los 256
         hosts como activos y lanza detección de versión/SO contra todos, lo que
         agota el timeout y deja el XML sin escribir. ``arp_scan`` ya ha
-        descubierto los hosts reales; reutilizamos su lista.
+        descubierto los hosts reales en la LAN local; reutilizamos su lista.
+
+        Si ``arp_scan`` no encontró nada (objetivo enrutado o fuera de la LAN
+        local) se hace un descubrimiento con ``nmap -sn`` y se escanean solo
+        los hosts que responden. Así una subred enrutada no produce hosts
+        fantasma ni pierde puertos/CVE por timeout. La lista se calcula una
+        sola vez por ejecución y se cachea en el contexto.
         """
+        cached = getattr(ctx, "_nmap_scan_targets", None)
+        if cached is not None:
+            return list(cached)
+
         target = str(ctx.target or "").strip()
         discovered: list[str] = []
         for host in ctx.hosts or []:
             ip = str(getattr(host, "ip", "") or "").strip()
             if ip and ip not in discovered:
                 discovered.append(ip)
-        if not discovered:
-            return [target] if target else []
         try:
             network = ipaddress.ip_network(target, strict=False)
         except ValueError:
-            return [target]
-        inside: list[str] = []
-        for ip in discovered:
-            try:
-                if ipaddress.ip_address(ip) in network:
-                    inside.append(ip)
-            except ValueError:
+            network = None
+
+        if discovered:
+            inside: list[str] = []
+            for ip in discovered:
+                try:
+                    if network is not None and ipaddress.ip_address(ip) in network:
+                        inside.append(ip)
+                except ValueError:
+                    continue
+            targets = inside or ([target] if target else [])
+        elif network is not None and discover and network.num_addresses > 1:
+            targets = self._ping_sweep(ctx, network)
+        else:
+            targets = [target] if target else []
+
+        setattr(ctx, "_nmap_scan_targets", targets)
+        return list(targets)
+
+    def _ping_sweep(self, ctx: ToolContext, network) -> list[str]:
+        """Descubre hosts vivos con nmap -sn cuando ARP no puede (subred enrutada)."""
+        out = ctx.path("nmap_ping.xml")
+        argv = [
+            "nmap",
+            "-sn",
+            "-n",
+            "-PE",
+            "-PS22,80,443,445,8006,8080,8443,3000",
+            "-PA80,443,8006",
+            "-T4",
+            "--max-retries",
+            "2",
+            "--host-timeout",
+            "90s",
+            "-oX",
+            out.name,
+            str(network),
+        ]
+        cmd = ctx.run(argv, timeout=min(ctx.timeout, 600))
+        if not out.exists():
+            # Si el descubrimiento no se pudo ejecutar, se conserva el
+            # comportamiento anterior en vez de quedarse sin escaneo.
+            return [str(network)] if cmd.returncode != 0 else []
+        try:
+            root = ET.parse(out).getroot()
+        except ET.ParseError:
+            return [str(network)]
+        live: list[str] = []
+        for host_el in root.findall("host"):
+            status = host_el.find("status")
+            if status is not None and status.get("state") != "up":
                 continue
-        return inside or [target]
+            for address in host_el.findall("address"):
+                if address.get("addrtype") in {"ipv4", "ipv6"}:
+                    ip = address.get("addr", "")
+                    if ip:
+                        live.append(ip)
+                    break
+        ctx.info(f"nmap: descubrimiento en {network} → {len(live)} hosts activos")
+        return live
 
     def _discovery(self, ctx: ToolContext, result: ToolResult) -> None:
         out = ctx.path("nmap_discovery.xml")
@@ -164,7 +231,7 @@ class NmapTool(Tool):
             "90s",
             "-oX",
             out.name,
-            *self._scan_targets(ctx),
+            *self._scan_targets(ctx, discover=False),
         ]
         cmd = ctx.run(argv, timeout=min(ctx.timeout, 600))
         self._parse(ctx, out, result, cmd.returncode, cmd.output)
