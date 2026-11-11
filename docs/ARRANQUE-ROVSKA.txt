@@ -1,0 +1,481 @@
+==============================================================================
+ ROVSKA - ARRANQUE PASO A PASO (para tontos)
+==============================================================================
+
+Esta guia explica, sin saltarse nada, como arrancar ROVSKA desde cero y como
+usarlo al dia siguiente. Todos los comandos se escriben en una terminal
+(consola) de Linux.
+
+IMPORTANTE:
+  - No instales nada con pip, npm ni similares en el host.
+  - Las herramientas de pentest viven dentro de Docker.
+  - Usa ROVSKA solo en redes propias o con autorizacion escrita.
+  - No toques el fichero README (sin extension): son las instrucciones
+    originales del proyecto.
+
+
+------------------------------------------------------------------------------
+ 0. ABRIR LA TERMINAL Y SITUARSE EN LA CARPETA
+------------------------------------------------------------------------------
+
+Abre la aplicacion "Terminal" y escribe:
+
+    cd ~/ROVSKA-MIDGARD
+
+Comprueba que estas en el sitio correcto:
+
+    pwd
+
+Debe mostrar algo parecido a:
+
+    /home/TU_USUARIO/ROVSKA
+
+Si no lo muestra, estas en otra carpeta. Vuelve a ejecutar:
+
+    cd ~/ROVSKA-MIDGARD
+
+
+------------------------------------------------------------------------------
+ 1. COMPROBAR QUE DOCKER ESTA ENCENDIDO
+------------------------------------------------------------------------------
+
+Escribe:
+
+    docker ps
+
+Si sale una lista (aunque este vacia), Docker funciona.
+
+Si sale un error como "Cannot connect to the Docker daemon", haz esto:
+
+    sudo systemctl start docker
+
+Y vuelve a probar:
+
+    docker ps
+
+Si tu usuario no puede usar Docker sin sudo, añadelo al grupo docker:
+
+    sudo usermod -aG docker $USER
+
+Cierra la sesion y vuelve a entrar, o reinicia el equipo. Despues prueba otra
+vez "docker ps".
+
+
+------------------------------------------------------------------------------
+ 2. PRIMERA VEZ: CREAR CONFIGURACION, BASE DE DATOS Y CONTENEDOR
+------------------------------------------------------------------------------
+
+Solo hace falta la primera vez (o si borras la carpeta data/).
+
+Paso 2.1. Crear el fichero .env si no existe:
+
+    ./run.sh env
+
+Si ya existe, el script avisa y no lo toca. Es correcto.
+
+Paso 2.2. Crear la base de datos y las carpetas:
+
+    ./run.sh init
+
+Paso 2.3. Construir y arrancar el contenedor Kali:
+
+    ./run.sh up
+
+La primera vez tarda bastante (puede ser media hora o mas) porque descarga e
+instala las herramientas. Ten paciencia y no cierres la terminal.
+
+Cuando termine, debe aparecer algo como:
+
+    [i] contenedor en marcha. Comprueba con: ./run.sh doctor
+
+Paso 2.4. Comprobar que todo esta bien:
+
+    ./run.sh doctor
+
+Lo importante es ver:
+
+    runner        : docker
+    docker        : en marcha rovvska/kali-tools:latest
+    pdf           : si (weasyprint)
+
+Y en la lista de herramientas, las 16 deben mostrar "si" en la segunda columna.
+
+Si alguna herramienta sale "no", revisa el siguiente comando:
+
+    ./run.sh up
+
+Y si sigue mal, mira la seccion "PROBLEMAS FRECUENTES" al final de esta guia.
+
+
+------------------------------------------------------------------------------
+ 3. ARRANCAR EL PANEL WEB
+------------------------------------------------------------------------------
+
+Escribe:
+
+    ./run.sh serve
+
+El programa intentara abrir el navegador automaticamente. Si no se abre, abre
+tu navegador (Firefox, Chrome...) y escribe esta direccion:
+
+    http://127.0.0.1:8780
+
+Deberias ver el panel de ROVSKA con el logo "ROVSKA" y el menu superior:
+Panel, Operaciones, Tareas, ATT&CK, Marcos, Comparativa, Informes, Ajustes.
+
+NO CIERRES LA TERMINAL mientras uses el panel. Si la cierras o pulsas Ctrl+C,
+el panel se apaga.
+
+Para dejarlo funcionando en segundo plano (sin terminal abierta), usa:
+
+    cd ~/ROVSKA-MIDGARD
+    nohup python3 -m rovvska serve --port 8780 > /tmp/rovska-panel.log 2>&1 &
+
+Y para comprobar que sigue vivo:
+
+    curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8780/
+
+Debe responder:
+
+    200
+
+
+------------------------------------------------------------------------------
+ 4. HACER EL PRIMER ESCANEO DESDE EL PANEL
+------------------------------------------------------------------------------
+
+1. En el panel, pulsa "Operaciones" en el menu superior.
+2. En "Objetivo autorizado" escribe tu red o un equipo tuyo. Ejemplos:
+      127.0.0.1
+      192.168.1.10
+      192.168.1.0/24
+3. En "Perfil" elige "Rapido" (quick) para empezar.
+4. Si el objetivo es publico, marca la casilla de autorizacion. Para redes
+   privadas propias no es obligatorio, pero es buena practica marcarla.
+5. Pulsa "Lanzar escaneo".
+6. El panel abrira el log en vivo. Espera a que termine.
+7. Vuelve a "Panel" para ver hosts, puertos, riesgo, ATT&CK y hallazgos.
+8. Si quieres saber que esta pasando mientras esperas, pulsa "Tareas".
+
+La vista "Tareas" muestra todos los trabajos en segundo plano: objetivo,
+estado (Activo, Completado, Cancelado, Fallido...), duracion, ultimo paso y
+botones para ver el log o cancelar. Se actualiza sola cada 5 segundos y el
+numero rojo del menu indica cuantas tareas siguen activas. Si el panel se
+reinicio a mitad de un escaneo, la tarea aparece como "Interrumpido".
+
+Consejo: empieza por un solo host (127.0.0.1 o tu equipo) y luego prueba tu
+red. Un /24 puede tardar bastante.
+
+
+------------------------------------------------------------------------------
+ 5. VER Y DESCARGAR INFORMES
+------------------------------------------------------------------------------
+
+1. Pulsa "Informes" en el menu superior.
+2. Veras una tabla con los ficheros generados:
+      .json   fuente de verdad
+      .xml    integracion
+      .html   informe para navegador
+      .pdf    informe profesional para entregar
+      .sarif  para CI/IDE
+      .csv    hoja de calculo
+3. Pulsa el boton de descarga del PDF.
+4. El PDF se abre con tu visor. Incluye portada, resumen ejecutivo,
+   metodologia, hallazgos, ATT&CK y numeracion de paginas.
+
+Los ficheros tambien estan en:
+
+    ~/ROVSKA-MIDGARD/data/reports/
+
+Si quieres regenerar los informes de un escaneo, mira primero su ID:
+
+    ./run.sh status
+
+Y despues:
+
+    python3 -m rovvska report scan_XXXXXXXXXXXX
+
+O desde el panel: "Informes" -> "Regenerar ultimo escaneo".
+
+
+------------------------------------------------------------------------------
+ 6. COMPARAR DOS ESCANEOS
+------------------------------------------------------------------------------
+
+Necesitas al menos dos escaneos del mismo objetivo (por ejemplo, antes y
+despues de aplicar parches).
+
+1. Pulsa "Comparativa" en el menu superior.
+2. En "Escaneo base" elige el escaneo antiguo.
+3. En "Escaneo objetivo" elige el escaneo nuevo.
+4. Pulsa "Comparar".
+
+Veras:
+  - cuanto cambia el riesgo,
+  - hosts y puertos nuevos o retirados,
+  - hallazgos nuevos, cerrados y cambios de severidad,
+  - tecnicas ATT&CK nuevas o desaparecidas.
+
+
+------------------------------------------------------------------------------
+ 7. IMPORTAR UN INFORME EXTERNO (JSON O XML)
+------------------------------------------------------------------------------
+
+Sirve para meter en el panel un informe hecho por otra herramienta o por otra
+persona.
+
+1. Pulsa "Informes".
+2. Baja hasta "Importar informe JSON o XML".
+3. Pulsa "Seleccionar fichero" y elige el .json o .xml.
+4. Pulsa "Importar y abrir en el panel".
+5. El informe aparecera como un escaneo mas y podras verlo, compararlo y
+   exportarlo.
+
+El fichero original se guarda en:
+
+    ~/ROVSKA-MIDGARD/data/reports/imports/
+
+Si el informe importado tiene el mismo objetivo y fecha que otro escaneo,
+ROVSKA añade un sufijo al nombre para NO sobrescribir la evidencia original.
+
+
+------------------------------------------------------------------------------
+ 8. ARRANCAR AL DIA SIGUIENTE (LO MAS HABITUAL)
+------------------------------------------------------------------------------
+
+Despues de reiniciar el equipo, normalmente basta con:
+
+    cd ~/ROVSKA-MIDGARD
+    docker compose up -d
+    ./run.sh serve
+
+Y abrir:
+
+    http://127.0.0.1:8780
+
+Comprobar que el contenedor esta vivo:
+
+    docker ps
+
+Debe aparecer "rovska-kali" con estado "Up".
+
+Si no aparece, arrancalo:
+
+    ./run.sh up
+
+Si el panel dice que no hay herramientas, ejecuta:
+
+    ./run.sh doctor
+
+
+------------------------------------------------------------------------------
+ 9. PARAR TODO
+------------------------------------------------------------------------------
+
+Para parar el panel:
+  - Si lo arrancaste con "./run.sh serve": pulsa Ctrl+C en esa terminal.
+  - Si lo arrancaste con nohup:
+        pkill -f "rovvska serve"
+
+Para parar el contenedor Kali:
+
+    cd ~/ROVSKA-MIDGARD
+    ./run.sh down
+
+Esto NO borra la base de datos, los informes ni las evidencias. Solo para y
+elimina el contenedor. La proxima vez se vuelve a crear con:
+
+    ./run.sh up
+
+
+------------------------------------------------------------------------------
+ 10. USAR ROVSKA DESDE OTRO ORDENADOR (SSH)
+------------------------------------------------------------------------------
+
+Por seguridad, el panel solo escucha en 127.0.0.1 (tu propio equipo). Si
+quieres verlo desde otro ordenador de la red, NO abras el puerto al mundo.
+Usa un tunel SSH.
+
+En el ordenador desde el que quieres verlo, ejecuta:
+
+    ssh -L 8780:127.0.0.1:8780 TU_USUARIO@IP_DEL_SERVIDOR
+
+Mientras esa conexion SSH siga abierta, abre en tu navegador:
+
+    http://127.0.0.1:8780
+
+Cuando cierres el SSH, el acceso se corta.
+
+
+------------------------------------------------------------------------------
+ 11. COMANDOS DE CLI QUE PUEDES USAR SIN PANEL
+------------------------------------------------------------------------------
+
+Situate siempre en la carpeta:
+
+    cd ~/ROVSKA-MIDGARD
+
+Ver ayuda:
+
+    ./run.sh
+
+Comprobar estado:
+
+    ./run.sh doctor
+    ./run.sh status
+
+Escanear:
+
+    ./run.sh scan 127.0.0.1 quick
+    ./run.sh scan 192.168.1.0/24 quick
+    ./run.sh scan 10.0.0.10 web
+
+Ver informes:
+
+    python3 -m rovvska report --list
+    python3 -m rovvska report <scan_id>
+
+Abrir una consola dentro del contenedor Kali:
+
+    ./run.sh shell
+
+Salir de esa consola:
+
+    exit
+
+
+------------------------------------------------------------------------------
+ 12. PROBLEMAS FRECUENTES
+------------------------------------------------------------------------------
+
+PROBLEMA: "docker: command not found"
+  Docker no esta instalado. Instalalo desde la documentacion oficial de Docker
+  para tu distribucion y vuelve a empezar.
+
+PROBLEMA: "Cannot connect to the Docker daemon"
+  Docker esta instalado pero apagado:
+      sudo systemctl start docker
+  Y comprueba:
+      docker ps
+
+PROBLEMA: "permission denied while trying to connect to the Docker daemon"
+  Tu usuario no esta en el grupo docker:
+      sudo usermod -aG docker $USER
+  Cierra sesion y vuelve a entrar.
+
+PROBLEMA: "port 8780 is already in use" o el panel no arranca
+  Ya hay otro proceso usando el puerto. Buscalo:
+      ss -ltnp | grep 8780
+  Matelo (sustituye PID por el numero que salga):
+      kill PID
+  Y vuelve a arrancar:
+      ./run.sh serve
+
+PROBLEMA: el navegador no abre solo
+  Abre manualmente:
+      http://127.0.0.1:8780
+
+PROBLEMA: "pdf: no (weasyprint)" en doctor
+  La imagen no tiene WeasyPrint o esta desactualizada. Reconstruye:
+      ./run.sh up
+  Y comprueba:
+      ./run.sh doctor
+
+PROBLEMA: una herramienta sale "no" en doctor
+  Reconstruye la imagen:
+      ./run.sh up
+  Si sigue igual, mira el log de construccion y comprueba que no falte espacio
+  en disco:
+      df -h
+
+PROBLEMA: "no hay escaneos" o el panel esta vacio
+  Es normal la primera vez. Lanza un escaneo desde "Operaciones" o por CLI:
+      ./run.sh scan 127.0.0.1 quick
+
+PROBLEMA: el contenedor esta "Up" pero las herramientas fallan
+  Comprueba que el montaje de datos funciona:
+      docker exec -w /data rovska-kali ls -la /data
+  Y revisa:
+      ./run.sh doctor
+
+PROBLEMA: cambie o borre la carpeta data/ y ahora falla todo
+  El contenedor tenia montada la carpeta antigua. Recrealo:
+      ./run.sh down
+      ./run.sh init
+      ./run.sh up
+
+PROBLEMA: quiero empezar de cero (BORRA TODO)
+  Aviso: esto elimina base de datos, informes y evidencias.
+      cd ~/ROVSKA-MIDGARD
+      ./run.sh down
+      rm -rf data
+      ./run.sh init
+      ./run.sh up
+
+PROBLEMA: el PDF sale como root y no puedo borrarlo
+  ROVSKA intenta devolverlo a tu usuario. Si aun asi pasa:
+      sudo chown -R $USER:$USER ~/ROVSKA-MIDGARD/data/reports
+
+
+------------------------------------------------------------------------------
+ 13. QUE HACE CADA PERFIL (para elegir bien)
+------------------------------------------------------------------------------
+
+discovery  Descubre hosts y nombres. No escanea puertos. Poco ruido.
+quick      Top-1000 + puertos curados + versiones + sonda HTTP. Uso normal.
+full       Los 65535 puertos TCP. Lento y ruidoso.
+web        WhatWeb, Nikto, Nuclei, testssl y ffuf. Aplicaciones web.
+infra      SSH, SMB, SNMP, DNS y servicios de gestion.
+deep       Cadena completa: red, web, infraestructura y exploits publicos.
+attack     Añade Hydra/Metasploit. Siempre dry-run salvo autorizacion expresa.
+
+Recomendacion: discovery -> quick -> web/infra -> deep. No empieces por deep.
+
+
+------------------------------------------------------------------------------
+ 14. SEGURIDAD: LO MINIMO QUE DEBES RESPETAR
+------------------------------------------------------------------------------
+
+- Escanea solo equipos y redes que sean tuyos o para los que tengas permiso
+  escrito.
+- No cambies ROVSKA_ALLOW_ATTACK=1 si no sabes exactamente que hace.
+- No expongas el panel a Internet. Usa SSH o una VPN.
+- Guarda los informes en un sitio privado: contienen datos de tu red.
+- Si trabajas para un cliente, define por escrito alcance, ventana horaria y
+  contacto antes de lanzar nada.
+
+ROVSKA registra comandos, salidas y hashes para que la auditoria sea trazable.
+Eso tambien significa que tus pruebas quedan registradas.
+
+
+------------------------------------------------------------------------------
+ 15. RESUMEN ULTRACORTO
+------------------------------------------------------------------------------
+
+Primera vez:
+
+    cd ~/ROVSKA-MIDGARD
+    ./run.sh env
+    ./run.sh init
+    ./run.sh up
+    ./run.sh doctor
+    ./run.sh serve
+
+Cada dia:
+
+    cd ~/ROVSKA-MIDGARD
+    docker compose up -d
+    ./run.sh serve
+
+Abrir:
+
+    http://127.0.0.1:8780
+
+Parar:
+
+    Ctrl+C            (panel)
+    ./run.sh down     (contenedor)
+
+==============================================================================
+ FIN - Si algo no encaja, vuelve a la seccion 12 (PROBLEMAS FRECUENTES).
+==============================================================================

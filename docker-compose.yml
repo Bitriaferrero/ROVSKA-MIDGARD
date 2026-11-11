@@ -1,0 +1,47 @@
+# ROVSKA — herramientas en Kali, backend y panel en el host.
+#
+#   docker compose up -d          # construye (la primera vez) y arranca
+#   docker compose exec kali bash # consola manual
+#   docker compose down           # para y elimina el contenedor
+#
+# network_mode: host permite ver la LAN real (ARP, SYN scan). En Docker
+# Desktop (macOS/Windows) el modo host no equivale al de Linux: usa una VM
+# Linux o un bridge con las rutas necesarias.
+
+services:
+  kali:
+    build:
+      context: ./docker/kali
+      dockerfile: Dockerfile
+      args:
+        WITH_WEB: "${ROVSKA_WITH_WEB:-1}"
+        WITH_INFRA: "${ROVSKA_WITH_INFRA:-1}"
+        WITH_ATTACK: "${ROVSKA_WITH_ATTACK:-1}"
+    image: rovvska/kali-tools:latest
+    container_name: "${ROVSKA_CONTAINER:-rovska-kali}"
+    hostname: rovska-kali
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # El backend y el contenedor deben ver el mismo directorio. Si cambias
+      # ROVSKA_DATA_DIR, el montaje lo sigue automáticamente.
+      - "${ROVSKA_DATA_DIR:-./data}:/data"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    environment:
+      TZ: "${TZ:-Europe/Madrid}"
+      ROVSKA_QUIET: "0"
+    stdin_open: true
+    tty: false
+    restart: unless-stopped
+    stop_grace_period: 10s
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /data/work || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

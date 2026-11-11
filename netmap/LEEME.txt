@@ -1,0 +1,397 @@
+================================================================================
+ ROVSKA NETMAP - LEEME
+ Inventario y mapa visual de red para visitas tecnicas
+================================================================================
+
+Este fichero tiene dos partes:
+
+  1. Como arrancar todo desde cero.
+  2. Todo lo necesario para que una IA (o una persona) pueda dibujar despues un
+     esquema grafico del codigo y de como funciona.
+
+Directorio de trabajo:  ~/ROVSKA-MIDGARD/netmap
+No se publica en Internet. Solo LAN y Tailscale.
+
+
+================================================================================
+ 1. ARRANQUE DESDE CERO
+================================================================================
+
+1.1 REQUISITOS
+--------------------------------------------------------------------------------
+  - Docker Engine + plugin docker compose.
+  - python3 en el host (solo para generar el mapa; no instala nada).
+  - nmap en el host (para el fingerprint de puertos del mapa).
+  - Contenedor "rovska-kali" con arp-scan (lo usa netmap.py para el barrido ARP).
+    Si no existe, netmap.py cae automaticamente a "ip neigh" del host.
+  - Puerto 8000 libre.
+  - Usuario con acceso a docker (grupo docker) o sudo.
+
+  Comprobar:
+      docker --version
+      docker compose version
+      python3 --version
+      nmap --version
+      docker ps --filter name=rovska-kali
+
+  IMPORTANTE sobre este host:
+  Docker NO puede publicar puertos (falla la regla DNAT). Por eso TODO el stack
+  usa "network_mode: host". No anadir "ports:" ni cambiar a red bridge: el
+  contenedor no arrancaria.
+
+1.2 FICHEROS QUE DEBEN EXISTIR
+--------------------------------------------------------------------------------
+  compose.yml        Stack: MariaDB, Redis, LibreNMS y dispatcher.
+  .env               Secretos y variables de MariaDB (NO subir a Git).
+  librenms.env       Configuracion de LibreNMS y Redis (NO subir a Git).
+  ACCESO.txt         Usuario/contrasena del panel (NO subir a Git).
+  netmap.py          Descubre la LAN y genera el mapa.
+  mapgen.py          Convierte los datos en el HTML del mapa.
+  map/               Salida generada (index.html + scan.json).
+  db/                Datos de MariaDB (generado por el contenedor).
+  librenms/          Datos persistentes de LibreNMS (generado).
+  README.md          Resumen corto de operacion.
+  .gitignore         Excluye secretos y datos.
+
+  Si falta alguno de los tres primeros, recrearlos asi:
+
+  --- .env ---------------------------------------------------------------
+  TZ=Europe/Madrid
+  PUID=1000
+  PGID=1000
+  MYSQL_DATABASE=librenms
+  MYSQL_USER=librenms
+  MYSQL_PASSWORD=CAMBIAR_POR_UNA_CLAVE_LARGA
+  NETMAP_PORT=8000
+  ------------------------------------------------------------------------
+
+  --- librenms.env -------------------------------------------------------
+  MEMORY_LIMIT=512M
+  MAX_INPUT_VARS=1000
+  UPLOAD_MAX_SIZE=16M
+  OPCACHE_MEM_SIZE=128
+  CACHE_DRIVER=redis
+  SESSION_DRIVER=redis
+  REDIS_HOST=127.0.0.1
+  LIBRENMS_SNMP_COMMUNITY=CAMBIAR_POR_COMUNIDAD_INTERNA
+  LIBRENMS_WEATHERMAP=false
+  ------------------------------------------------------------------------
+
+  Generar una clave aleatoria:
+      openssl rand -hex 24
+
+  Proteger los secretos:
+      chmod 600 .env librenms.env ACCESO.txt
+      chmod 700 .
+
+1.3 ARRANCAR EL STACK
+--------------------------------------------------------------------------------
+      cd ~/ROVSKA-MIDGARD/netmap
+      docker compose config --quiet        # valida la sintaxis
+      docker compose up -d                 # arranca los 4 servicios
+      docker compose ps                    # deben estar "Up"
+
+  Servicios y nombres de contenedor:
+      db          -> rovska-netmap-db          MariaDB 10.11 en 127.0.0.1:3306
+      redis       -> rovska-netmap-redis       Redis 7.2 en 127.0.0.1:6379
+      librenms    -> rovska-netmap             Web/nginx en 0.0.0.0:8000
+      dispatcher  -> rovska-netmap-dispatcher  Pollers en segundo plano
+
+  Esperar 20-30 s la primera vez (inicializa la base de datos).
+  Comprobar:
+      curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
+      # esperado: 302 (redirige a /login)
+
+1.4 PRIMERA CONFIGURACION DE LIBRENMS
+--------------------------------------------------------------------------------
+  Crear el usuario administrador (solo la primera vez):
+
+      cd ~/ROVSKA-MIDGARD/netmap
+      ADMINPASS="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)"
+      docker compose exec -T --user librenms librenms \
+          php lnms user:add admin -p "$ADMINPASS" -r admin \
+          -e admin@localhost -l "Administrador"
+      printf 'LibreNMS admin\nusuario: admin\ncontrasena: %s\nurl: http://192.168.88.252:8000\n' \
+          "$ADMINPASS" > ACCESO.txt
+      chmod 600 ACCESO.txt
+
+  Si se olvida la contrasena, se puede volver a ejecutar user:add con otro
+  nombre, o borrar el usuario desde la base de datos y repetir.
+
+  Validacion del sistema:
+      docker compose exec -T --user librenms librenms php validate.php
+      # Solo debe quedar el aviso "Updates are managed through the official
+      # Docker image". Cualquier FAIL debe corregirse antes de usar.
+
+  Dependencias Python (necesarias para que validate no falle). Se instalan
+  dentro del volumen persistente, NO en el host:
+
+      docker exec -u root rovska-netmap \
+          pip3 install --no-cache-dir --target /data/python \
+          -r /opt/librenms/requirements.txt "setuptools<81"
+      docker exec -u root rovska-netmap chown -R librenms:librenms /data/python
+      # compose.yml ya define PYTHONPATH=/data/python
+
+  Anadir dispositivos (ejemplo, solo ping porque este router no tiene SNMP):
+      docker compose exec -T --user librenms librenms \
+          php lnms device:add 192.168.88.1 --ping-only -d "Gateway MikroTik"
+
+1.5 GENERAR EL MAPA DE VISITA
+--------------------------------------------------------------------------------
+      cd ~/ROVSKA-MIDGARD/netmap
+      python3 netmap.py                  # usa wlan0 por defecto
+      python3 netmap.py --iface eth0     # otra interfaz
+
+  Que hace (solo lectura, sin credenciales):
+      1. Lanza "arp-scan --localnet" dentro de rovska-kali.
+      2. Hace ping a cada IP (latencia).
+      3. Lanza "nmap -Pn -n -T4 --top-ports 200 -sV --version-light" a cada IP.
+      4. Escribe map/scan.json.
+      5. Llama a mapgen.py, que escribe map/index.html.
+
+  Ver el resultado:
+      http://192.168.88.252:8000/netmap/index.html
+      http://100.88.33.77:8000/netmap/index.html      (Tailscale)
+
+  El HTML se sirve desde el propio nginx de LibreNMS gracias al volumen:
+      ./map:/opt/librenms/html/netmap:ro
+
+1.6 OPERACION DIARIA
+--------------------------------------------------------------------------------
+      docker compose ps
+      docker compose logs -f librenms
+      docker compose restart librenms
+      docker compose down              # parar (conserva datos)
+      docker compose up -d             # arrancar
+      docker compose pull && docker compose up -d    # actualizar
+
+  NO borrar db/ ni librenms/ salvo que se quiera empezar de cero.
+  Para empezar de cero de verdad:
+      docker compose down
+      mv db db.bak && mv librenms librenms.bak
+      docker compose up -d
+      # repetir 1.4
+
+1.7 SNMP (OPCIONAL, TOPOLOGIA REAL)
+--------------------------------------------------------------------------------
+  Sin SNMP, LibreNMS solo hace ping y el mapa L2 (switches, VLAN, LLDP) no
+  aparece. En RouterOS, con autorizacion del responsable:
+
+      /snmp set enabled=yes
+      /snmp community add name=rovska_ro addresses=192.168.88.0/24 \
+           read-access=yes write-access=no
+
+  Despues, en LibreNMS: Devices -> Add Device -> 192.168.88.1, v2c,
+  comunidad rovska_ro. Repetir en cada switch/AP con SNMP.
+
+  Proxmox (opcional): instalar librenms-agent + check_mk en el host Proxmox y
+  activar enable_proxmox en el dispositivo. Solo aporta trafico por VM.
+
+1.8 SEGURIDAD
+--------------------------------------------------------------------------------
+  - El panel escucha en 0.0.0.0:8000 (LAN + Tailscale). No abrir en Internet.
+  - MariaDB y Redis escuchan SOLO en 127.0.0.1.
+  - .env, librenms.env y ACCESO.txt tienen permisos 600.
+  - El mapa usa solo lectura: no autentica, no explota, no cambia equipos.
+  - Antes de cualquier accion ofensiva: autorizacion y alcance por escrito.
+
+
+================================================================================
+ 2. MATERIAL PARA PEDIR A UNA IA UN ESQUEMA GRAFICO
+================================================================================
+
+Copiar desde "PROMPT SUGERIDO" hasta el final y pegarlo en la IA junto con este
+fichero. Todo lo necesario esta descrito debajo.
+
+2.1 RESUMEN EN UNA FRASE
+--------------------------------------------------------------------------------
+  "Sistema local que descubre hosts por ARP, los caracteriza con nmap y publica
+   un mapa HTML, apoyado en LibreNMS para inventario SNMP y topologia L2."
+
+2.2 COMPONENTES (NODOS DEL ESQUEMA)
+--------------------------------------------------------------------------------
+  [Usuario/Navegador]
+      Accede por LAN o Tailscale al puerto 8000.
+
+  [Host Linux - 192.168.88.252 / Tailscale 100.88.33.77]
+      Ejecuta Docker, python3, nmap y el contenedor rovska-kali.
+
+  [rovska-netmap]  (imagen librenms/librenms:latest, network_mode host)
+      nginx + php-fpm. Sirve el panel y el mapa estatico /netmap/.
+      Escucha 0.0.0.0:8000.
+
+  [rovska-netmap-dispatcher]  (misma imagen, SIDECAR_DISPATCHER=1)
+      Ejecuta los pollers de LibreNMS en segundo plano.
+
+  [rovska-netmap-db]  (mariadb:10.11, host network)
+      Base de datos. Escucha 127.0.0.1:3306. Volumen ./db.
+
+  [rovska-netmap-redis]  (redis:7.2-alpine, host network)
+      Cache, sesiones y locks. Escucha 127.0.0.1:6379.
+
+  [rovska-kali]  (rovvska/kali-tools:latest, ya existente)
+      Contenedor auxiliar con arp-scan. Se usa solo para el barrido ARP.
+
+  [Red LAN 192.168.88.0/24]
+      Gateway MikroTik .1, hosts .248, .249, .250, .251, .252, .254.
+
+  [Equipos SNMP]  (opcional, futuro)
+      Router/switches/APs con comunidad de solo lectura.
+
+2.3 CONEXIONES (ARISTAS DEL ESQUEMA)
+--------------------------------------------------------------------------------
+  Navegador  --HTTP/TCP 8000-->  rovska-netmap (nginx)
+  rovska-netmap (php-fpm) --TCP 3306--> rovska-netmap-db
+  rovska-netmap (php-fpm) --TCP 6379--> rovska-netmap-redis
+  rovska-netmap-dispatcher --TCP 3306--> rovska-netmap-db
+  rovska-netmap-dispatcher --TCP 6379--> rovska-netmap-redis
+  rovska-netmap-dispatcher --SNMP/UDP 161 (futuro)--> equipos SNMP
+  rovska-netmap-dispatcher --ICMP--> dispositivos ping-only
+  netmap.py --docker exec--> rovska-kali (arp-scan)
+  rovska-kali --ARP broadcast--> LAN
+  netmap.py --ICMP + TCP/UDP--> LAN (ping + nmap)
+  netmap.py --escribe--> map/scan.json
+  mapgen.py --lee--> map/scan.json
+  mapgen.py --escribe--> map/index.html
+  rovska-netmap --volumen ro--> ./map (sirve /netmap/index.html)
+
+  Nota: db y redis se comunican por loopback del host porque todos los
+  contenedores comparten la red del host (network_mode: host).
+
+2.4 FLUJO 1: GENERACION DEL MAPA (sin credenciales)
+--------------------------------------------------------------------------------
+  1. El operador ejecuta: python3 netmap.py [--iface wlan0]
+  2. netmap.py -> arp_scan(): docker exec rovska-kali arp-scan --localnet.
+     arp-scan envia ARP a la /24 y devuelve IP + MAC + fabricante.
+  3. Si arp-scan falla o no hay contenedor, fallback a "ip neigh show dev IFACE".
+  4. Se deduplica por IP en un dict.
+  5. ssid(): "iw dev wlan0 link" obtiene el SSID.
+  6. ThreadPoolExecutor(8) ejecuta en paralelo por host:
+        ping()  -> latencia en ms (ICMP, 1 paquete, timeout 1 s)
+        nmap()  -> puertos abiertos "puerto/servicio" (top 200, -sV)
+  7. Se construye el dict "data": ssid, generated, hosts[], notes.
+  8. Se escribe map/scan.json.
+  9. Se invoca mapgen.py con (scan.json, index.html).
+ 10. mapgen.py:
+        classify()   -> tipo: router/ap/laptop/phone/server/unknown,
+                        por fabricante + MAC localmente administrada + IP .1/.254
+        main()       -> ordena (gateway primero), calcula posiciones radiales,
+                        genera SVG + tabla HTML autocontenida (sin CDN)
+ 11. map/index.html queda disponible en /netmap/index.html via nginx.
+
+2.5 FLUJO 2: LIBRENMS
+--------------------------------------------------------------------------------
+  1. Navegador -> nginx :8000 -> php-fpm.
+  2. Laravel usa MariaDB para datos y Redis para cache/sesiones/locks.
+  3. cron interno ejecuta "php artisan schedule:run" cada minuto.
+  4. El schedule lanza DispatchPollingWork (cada 10 s aprox.) y tareas de
+     mantenimiento. El dispatcher reclama el trabajo de polling.
+  5. El poller consulta cada dispositivo por SNMP (o ICMP si --ping-only) y
+     guarda metricas; los graficos van a RRD dentro de ./librenms.
+  6. validate.php comprueba BD, esquema, Redis, pollers, scheduler y Python.
+  7. El mapa L2 de LibreNMS solo se llena con SNMP (LLDP/CDP + tablas MAC/ARP).
+
+2.6 RESPONSABILIDAD DE CADA FICHERO
+--------------------------------------------------------------------------------
+  compose.yml
+      Define los 4 servicios, red host, volumenes, variables y limites.
+      Punto de entrada de la infraestructura.
+
+  .env
+      TZ, UID/GID, credenciales de MariaDB y puerto del panel.
+      Consumido por compose.yml.
+
+  librenms.env
+      Memoria PHP, cache/sesion en Redis, comunidad SNMP interna.
+      Consumido por librenms y dispatcher.
+
+  netmap.py  (colector)
+      Constantes: ROOT, KALI.
+      run(cmd, timeout)          -> subprocess con captura y timeout.
+      arp_scan(iface)            -> dict {ip: {ip,mac,vendor,ports,latency_ms}}.
+      ping(ip)                   -> float o None.
+      nmap(ip)                   -> lista ["22/ssh", ...].
+      ssid(iface)                -> str o None.
+      main()                     -> orquesta todo, escribe scan.json, llama mapgen.
+      Dependencias: solo stdlib (argparse, json, re, subprocess,
+      concurrent.futures, pathlib).
+
+  mapgen.py  (renderizador)
+      TYPES                      -> colores y etiquetas por tipo de equipo.
+      VENDOR_TYPE                -> reglas fabricante -> tipo.
+      classify(mac, vendor, ip)  -> tipo de host.
+      esc(value)                 -> escape HTML.
+      main()                     -> lee JSON, calcula layout radial, escribe HTML.
+      Dependencias: solo stdlib (html, json, sys, datetime, math).
+
+  map/scan.json                 -> datos crudos del ultimo barrido.
+  map/index.html                -> mapa visual autocontenido.
+
+  README.md                     -> operacion resumida.
+  ACCESO.txt                    -> credenciales del panel (600).
+
+2.7 MODELO DE DATOS scan.json
+--------------------------------------------------------------------------------
+  {
+    "ssid": "MikroTik-35E273",
+    "generated": "2026-11-04T04:44:00",
+    "hosts": [
+      {
+        "ip": "192.168.88.1",
+        "mac": "b8:69:f4:35:e2:6d",
+        "vendor": "Routerboard.com",
+        "ports": ["21/ftp", "22/ssh", "23/telnet", "53/domain",
+                  "80/http", "2000/bandwidth-test"],
+        "latency_ms": 3.1,
+        "type": "router"          <-- lo anade mapgen.py
+      }
+    ],
+    "notes": "texto de limitaciones"
+  }
+
+2.8 DECISIONES Y RESTRICCIONES (para que el esquema sea fiel)
+--------------------------------------------------------------------------------
+  - Docker del host no soporta DNAT: no se pueden publicar puertos. Todo usa
+    network_mode: host y los servicios escuchan en loopback o 0.0.0.0.
+  - MariaDB y Redis NO se exponen a la LAN (bind 127.0.0.1).
+  - El mapa no usa IA ni servicios en la nube: es Python + HTML estatico.
+  - El descubrimiento es pasivo/solo lectura: ARP, ICMP y fingerprint TCP/UDP.
+  - El mapa L2 real depende de SNMP; sin SNMP solo hay inventario por host.
+  - El HTML no carga recursos externos (funciona sin Internet).
+  - Datos y secretos quedan en local; nada se envia fuera.
+  - ROVSKA y su panel (puerto 8780) no se modifican.
+
+2.9 PROMPT SUGERIDO PARA LA IA
+--------------------------------------------------------------------------------
+  "A partir de la descripcion de LEEME.txt, genera un esquema grafico
+   (Mermaid o SVG) de la solucion ROVSKA NETMAP con tres vistas:
+
+   VISTA A - Infraestructura: navegador, host Linux, contenedores
+   rovska-netmap, dispatcher, db, redis, rovska-kali, LAN y equipos SNMP.
+   Etiqueta cada arista con protocolo y puerto.
+
+   VISTA B - Flujo de generacion del mapa: netmap.py -> arp-scan -> ping/nmap
+   -> scan.json -> mapgen.py -> index.html -> nginx -> navegador.
+
+   VISTA C - Flujo de LibreNMS: navegador -> nginx/php-fpm -> MariaDB/Redis;
+   cron -> schedule:run -> dispatcher -> pollers -> SNMP/ICMP -> RRD.
+
+   Incluye una leyenda de colores por tipo de componente y otra por tipo de
+   host (router, AP, portatil, movil, servidor, desconocido). Manten los
+   nombres reales de contenedores, ficheros y funciones. Indica con linea
+   discontinua lo que es opcional o futuro (SNMP, Proxmox)."
+
+2.10 ESTADO ACTUAL CONOCIDO (para no dibujar algo incorrecto)
+--------------------------------------------------------------------------------
+  - 4 contenedores Up; validate.php sin FAIL.
+  - Panel: http://192.168.88.252:8000 (login OK, usuario admin).
+  - Mapa:   http://192.168.88.252:8000/netmap/index.html
+  - Ultimo barrido: 5 hosts (.1 MikroTik, .248 movil, .249 LCFC,
+    .250 ASUSTek, .254 LCFC).
+  - SNMP del router cerrado: no hay topologia L2 todavia.
+  - Proxmox no configurado.
+  - El router expone 21/ftp, 23/telnet y 2000/bandwidth-test: revisar.
+
+================================================================================
+ Fin de LEEME.txt
+================================================================================

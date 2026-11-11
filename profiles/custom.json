@@ -1,0 +1,15 @@
+{
+  "id": "custom",
+  "label": "Personalizado",
+  "description": "Exige --ports. Mantiene versiones, SO y los scripts que indiques.",
+  "mode": "scan",
+  "scan": ["-sS"],
+  "version": true,
+  "os": true,
+  "timing": "-T4",
+  "ports_tcp": "",
+  "ports_udp": "",
+  "udp": false,
+  "scripts": [],
+  "timeout": 1800
+}

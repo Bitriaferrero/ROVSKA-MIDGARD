@@ -1,0 +1,16 @@
+{
+  "id": "full",
+  "label": "Completo",
+  "description": "Los 65535 puertos TCP, versiones, SO y scripts seguros. Lento.",
+  "mode": "scan",
+  "scan": ["-sS"],
+  "version": true,
+  "os": true,
+  "timing": "-T4",
+  "ports_tcp": "1-65535",
+  "ports_udp": "",
+  "udp": false,
+  "scripts": ["http-title", "http-headers", "http-methods", "smb-os-discovery", "smb2-security-mode", "ssh-hostkey", "ssl-cert"],
+  "extra_args": ["--max-rate", "400", "--min-hostgroup", "1", "--max-hostgroup", "2"],
+  "timeout": 7200
+}

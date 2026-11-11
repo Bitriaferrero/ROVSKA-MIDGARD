@@ -1,0 +1,15 @@
+{
+  "id": "infra",
+  "label": "Infraestructura",
+  "description": "Servicios de red, SMB, SNMP y administración. Incluye UDP de sondeo.",
+  "mode": "scan",
+  "scan": ["-sS"],
+  "version": true,
+  "os": true,
+  "timing": "-T3",
+  "ports_tcp": "21,22,23,53,80,111,123,135,139,389,443,445,515,623,636,873,2049,3389,5060,5900,8080,8291,8443,8728,8729",
+  "ports_udp": "161,500,4500",
+  "udp": true,
+  "scripts": ["banner", "http-title", "http-headers", "smb-os-discovery", "smb2-security-mode", "snmp-info", "ssl-cert"],
+  "timeout": 1800
+}

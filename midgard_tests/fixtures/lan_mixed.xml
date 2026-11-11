@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -oX - -sS -sV -O --osscan-guess" start="1760000000" version="7.991">
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.10" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:01" addrtype="mac" vendor="Canonical"/>
+  <hostnames><hostname name="ubuntu-lab" type="PTR"/></hostnames>
+  <ports>
+    <port protocol="tcp" portid="22">
+      <state state="open" reason="syn-ack"/>
+      <service name="ssh" product="OpenSSH" version="7.2p2 Ubuntu-4ubuntu2.10" ostype="Linux" method="probed" conf="10"/>
+      <script id="banner" output="SSH-2.0-OpenSSH_7.2p2 Ubuntu-4ubuntu2.10"/>
+    </port>
+    <port protocol="tcp" portid="80">
+      <state state="closed" reason="reset"/>
+      <service name="http" method="table" conf="3"/>
+    </port>
+  </ports>
+  <os>
+    <osmatch name="Linux 4.4" accuracy="95">
+      <osclass type="general purpose" vendor="Linux" osfamily="Linux" osgen="4.X" accuracy="95"/>
+    </osmatch>
+  </os>
+</host>
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.11" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:02" addrtype="mac" vendor="Dell Inc."/>
+  <hostnames><hostname name="win11-lab" type="PTR"/></hostnames>
+  <ports>
+    <port protocol="tcp" portid="135">
+      <state state="open" reason="syn-ack"/>
+      <service name="msrpc" product="Microsoft Windows RPC" version="Windows 11" ostype="Windows" method="probed" conf="10"/>
+    </port>
+    <port protocol="tcp" portid="445">
+      <state state="open" reason="syn-ack"/>
+      <service name="microsoft-ds" product="Microsoft Windows SMB" ostype="Windows" method="probed" conf="10"/>
+      <script id="smb-os-discovery" output="OS: Windows 11 Enterprise 22631&#10;Computer name: WIN11-LAB&#10;NetBIOS computer name: WIN11-LAB&#10;"/>
+    </port>
+    <port protocol="tcp" portid="3389">
+      <state state="open" reason="syn-ack"/>
+      <service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"/>
+    </port>
+  </ports>
+  <os>
+    <osmatch name="Microsoft Windows 11" accuracy="98">
+      <osclass type="general purpose" vendor="Microsoft" osfamily="Windows" osgen="11" accuracy="98"/>
+    </osmatch>
+  </os>
+</host>
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.12" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:03" addrtype="mac" vendor="QEMU"/>
+  <hostnames><hostname name="debian-lab" type="PTR"/></hostnames>
+  <ports>
+    <port protocol="tcp" portid="80">
+      <state state="open" reason="syn-ack"/>
+      <service name="http" product="Apache httpd" version="2.4.56" ostype="Linux" method="probed" conf="10"/>
+      <script id="http-headers" output="HTTP/1.1 200 OK&#10;Server: Apache/2.4.56 (Debian)&#10;"/>
+    </port>
+    <port protocol="tcp" portid="22">
+      <state state="open" reason="syn-ack"/>
+      <service name="ssh" product="OpenSSH" version="8.4p1 Debian-5+deb11u1" ostype="Linux" method="probed" conf="10"/>
+    </port>
+  </ports>
+  <os>
+    <osmatch name="Linux 5.0 - 5.4" accuracy="96">
+      <osclass type="general purpose" vendor="Linux" osfamily="Linux" osgen="5.X" accuracy="96"/>
+    </osmatch>
+  </os>
+</host>
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.13" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:04" addrtype="mac" vendor="Apple, Inc."/>
+  <hostnames><hostname name="mac-lab" type="PTR"/></hostnames>
+  <ports>
+    <port protocol="tcp" portid="22">
+      <state state="open" reason="syn-ack"/>
+      <service name="ssh" product="OpenSSH" version="9.4" ostype="Mac OS X" method="probed" conf="10"/>
+    </port>
+    <port protocol="tcp" portid="5900">
+      <state state="open" reason="syn-ack"/>
+      <service name="vnc" product="Apple remote desktop" ostype="Mac OS X" method="probed" conf="10"/>
+    </port>
+  </ports>
+  <os>
+    <osmatch name="Apple macOS 12.00 - 13.00" accuracy="97">
+      <osclass type="general purpose" vendor="Apple" osfamily="macOS" osgen="12.X" accuracy="97"/>
+    </osmatch>
+  </os>
+</host>
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.14" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:05" addrtype="mac" vendor="Samsung Electronics"/>
+  <hostnames><hostname name="galaxy" type="PTR"/></hostnames>
+  <ports>
+    <port protocol="tcp" portid="62078">
+      <state state="open" reason="syn-ack"/>
+      <service name="unknown" method="table" conf="3"/>
+    </port>
+  </ports>
+</host>
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.1" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:06" addrtype="mac" vendor="Routerboard.com"/>
+  <hostnames><hostname name="router.lan" type="PTR"/></hostnames>
+  <ports>
+    <port protocol="tcp" portid="22">
+      <state state="open" reason="syn-ack"/>
+      <service name="ssh" product="MikroTik SSH" ostype="RouterOS" method="probed" conf="10"/>
+    </port>
+    <port protocol="tcp" portid="8291">
+      <state state="open" reason="syn-ack"/>
+      <service name="http" product="MikroTik RouterOS" ostype="RouterOS" method="probed" conf="10"/>
+    </port>
+    <port protocol="udp" portid="161">
+      <state state="open" reason="udp-response"/>
+      <service name="snmp" product="SNMPv2c" method="probed" conf="10"/>
+      <script id="snmp-sysdescr" output="RouterOS 6.49.23"/>
+    </port>
+  </ports>
+  <os>
+    <osmatch name="MikroTik RouterOS 6.X" accuracy="99">
+      <osclass type="router" vendor="MikroTik" osfamily="RouterOS" osgen="6.X" accuracy="99"/>
+    </osmatch>
+  </os>
+</host>
+<host starttime="1760000001" endtime="1760000010">
+  <status state="up" reason="arp-response"/>
+  <address addr="192.168.88.20" addrtype="ipv4"/>
+  <address addr="AA:BB:CC:DD:EE:07" addrtype="mac" vendor=""/>
+  <hostnames/>
+  <ports/>
+</host>
+</nmaprun>

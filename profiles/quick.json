@@ -1,0 +1,15 @@
+{
+  "id": "quick",
+  "label": "Rápido",
+  "description": "Top 1000 TCP, versiones de servicio, SO y banners básicos.",
+  "mode": "scan",
+  "scan": ["-sS"],
+  "version": true,
+  "os": true,
+  "timing": "-T4",
+  "ports_tcp": "",
+  "ports_udp": "",
+  "udp": false,
+  "scripts": ["banner", "http-title", "http-headers", "ssl-cert", "ssh-hostkey"],
+  "timeout": 900
+}

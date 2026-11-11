@@ -1,0 +1,75 @@
+INSTRUCCIONES — PERFILES Y HERRAMIENTAS DE ROVSKA-MIDGARD
+=========================================================
+
+Qué hace realmente cada perfil
+------------------------------
+
+| Perfil      | Herramientas que ejecuta |
+|-------------|--------------------------|
+| discovery   | arp_scan + nmap -sn (solo descubrir hosts) |
+| quick       | arp_scan + nmap top-1000 + puertos curados + http_probe |
+| full        | arp_scan + masscan* + nmap -p- (65535 TCP) + http_probe |
+| web         | nmap sobre puertos web + http_probe + whatweb + nikto + nuclei + testssl + web_fuzz |
+| infra       | nmap + http_probe + ssh_audit + smb + snmp + dns |
+| deep        | Todo lo de red, web e infraestructura + searchsploit |
+| attack      | Reconocimiento + ssh_audit + smb + snmp + hydra + metasploit |
+
+* masscan aparece en full, pero está desactivado por defecto: solo se ejecuta
+  si en las opciones se pone use_masscan: true. Además, aunque se ejecute,
+  después nmap vuelve a hacer el barrido completo con -p-, así que no
+  sustituye a nmap.
+
+Respuestas directas
+-------------------
+
+¿Un scan full lanza dns, http_probe, hydra y masscan?
+- http_probe: sí.
+- masscan: solo si se activa con use_masscan: true.
+- dns: no. Solo va en infra, deep y attack, y además necesita un dominio;
+  si el objetivo es una IP, se omite.
+- hydra: no. Solo va en attack, y no hace fuerza bruta automática: necesita
+  usuarios y contraseñas explícitos.
+- nikto: no en full. Solo en web, deep y attack.
+
+¿Nikto se lanza automáticamente cuando nmap detecta una interfaz web?
+Sí, pero solo en los perfiles web, deep o attack. El flujo es:
+1. nmap detecta hosts, puertos y servicios.
+2. Se construyen URLs con los puertos que parecen HTTP/HTTPS.
+3. http_probe obtiene cabeceras, título, cookies y redirecciones.
+4. En web/deep, whatweb, nikto, nuclei, testssl y web_fuzz usan esas URLs
+   para ampliar la información.
+
+En full solo llega hasta http_probe; no lanza Nikto ni el resto de
+herramientas web.
+
+¿Hydra se lanza solo al detectar un login web?
+No. Hydra no analiza formularios web ni descubre credenciales por sí solo.
+En el perfil attack se intenta ejecutar, pero:
+- Por defecto hace dry-run.
+- Sin usuarios y contraseñas indicados, se omite.
+- Para ejecutarlo de verdad hacen falta autorización expresa,
+  ROVSKA_ALLOW_ATTACK=1 y la opción de ejecución real.
+- Está pensado para un objetivo concreto, no para lanzarlo contra toda una red.
+
+Proceso práctico para usar una herramienta concreta
+---------------------------------------------------
+
+1. Comprobar que la herramienta existe y está disponible dentro del
+   contenedor Docker: ./run.sh doctor o el catálogo de herramientas.
+2. Si se quiere el flujo automático, elegir el perfil adecuado:
+   - Red y puertos: quick o full.
+   - Web: web o deep.
+   - Infraestructura: infra.
+   - Credenciales/exploits controlados: attack.
+3. Si se quiere una herramienta suelta o parámetros especiales, usar la
+   vista Operaciones del panel o el comando operation:
+   - elegir herramienta,
+   - indicar objetivo,
+   - pasar parámetros JSON,
+   - dejar dry-run activado salvo que haya autorización.
+4. En Tareas se puede seguir el log y ver si la herramienta se ejecutó,
+   se omitió por no estar disponible o terminó con error.
+
+Resumen corto: full no es "todo"; es red completa más sonda HTTP. Para Nikto
+y el análisis web automático hay que usar web o deep. Para Hydra hay que usar
+attack y aportar credenciales, y aun así empieza en dry-run.

@@ -1,0 +1,33 @@
+USANDO de BASE o de REFERENCIA AUDITORIA_PLUS que esta en mi home haremos un programa que haga lo mismo o similar al original.
+Me gustaria aun a pesar de implemntar todo esto nuevo fuera fiel al original en cuando a diposicion visualizacion de la infromacin ips y datos.
+
+
+Crea otro proyecto en home/ROVSKA sin tocar AUDITORIA_PLUS que haga lo siguiente:
+
+1- Haga lo mismo que el proyecto AUDITORIA_PLUS sus funciones sera lo mismo
+SCAN de ip ,Barridos de rangos de red , generacion de reports y lanzamiento de pruebas de defensa y ataque pero la obtencion de la info
+
+2- Usr mas herramientas para metodologias de analisis no solo nmap.
+MITRE ATT&CK, PTES, OSSTMM, OWASP, CWE/CVE.
+
+3- Tambien podriamos bajar algun docker de kali y usarlo para este proposito arpovechan sus herramientas.
+Lo conectamos a opencode via MCP o como estimes oprtuno usando opencode como backend lo hemos hecho antes  y sobre mcp monte el 
+arsenal PentAGI, PentestGPT, DeepExploit, PentestAgent para realizacion de pruebas de auditroria y pentesting que podremos o lanzar desde panel web para realizar las
+auditorias de defensa y ataque de nuestra erd al igual que el anterior con misma disposicion pero con mas opciones el programa guardara estadisticas y datos obtenidos de todo esto.
+
+El modelo opencode orquestara todo desde nmap hasta metasploit
+Y nos entragara ls resultados tal como hacamos en AUDITORIA_PLUS en el mismo dashboard y diseño pero con contenido ampliado.
+Severidad , matriz ATT&CK y la cadena de ataque reconstruida paso a paso.
+En opencode estoy usando una version de deepseek flash 4.1 Free podemos seguir usandolo para todo esto.
+
+
+Quiero tambien que popongas mejoras de rendimiento  y obtencion de informacion y adutoria que no esten propuestas pero que puedan mejorar el proyecto.
+El resultado final una aplicacion profesional con la que pueda auditar y hacer pruebas de ataque y defensa con todo esto.No casero, profesional.
+
+Quiero que me hagas propuestas o preguntes para mejorar todo esto u otras opciones que veas oportunas.
+Quiero que el formato de lso reports basado en el original json, xml etc que luego usaremos par rellenar un panel web y pintar todo estos datos
+incluso lanzar operaciones de distintas herramientas.  
+
+* Tengo ya instalado docker y docker compose en el equipo funcionando.
+
+

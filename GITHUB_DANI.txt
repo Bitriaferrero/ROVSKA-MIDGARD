@@ -1,0 +1,76 @@
+SUBIR ROVSKA-MIDGARD A GITHUB
+==============================
+
+1. Entrar al directorio:
+
+   cd ~/ROVSKA-MIDGARD
+
+
+2. Ignorar el JSON con el token de Proxmox:
+
+   echo "data/proxmox.json" >> .gitignore
+
+   Opcional, para ignorar todo data/:
+
+   echo "data/" >> .gitignore
+
+
+3. Iniciar el repositorio:
+
+   git init
+   git add .
+   git status
+
+
+4. Comprobar ANTES de subir:
+
+   En la lista de "git status" NO deben aparecer:
+
+   - data/proxmox.json
+   - .env
+   - deploy/librenms/.env
+   - deploy/librenms/librenms.env
+   - deploy/librenms/ACCESO.txt
+   - data/rovska.db
+
+   Si aparece alguno, parar y revisar.
+
+
+5. Guardar la primera versión:
+
+   git commit -m "ROVSKA-MIDGARD"
+   git branch -M main
+
+
+6. Crear el repositorio vacío en GitHub desde la web
+   (sin README, sin .gitignore, sin licencia).
+
+
+7. Conectar y subir:
+
+   git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
+   git push -u origin main
+
+
+8. GitHub pedirá usuario y token/contraseña.
+
+
+AVISO IMPORTANTE
+----------------
+
+Si data/proxmox.json ya se subió antes, añadirlo al .gitignore
+NO lo borra del historial.
+
+En ese caso:
+- Cambia/crea de nuevo el token de Proxmox.
+- Borra el repositorio o limpia el historial antes de publicarlo.
+
+
+SI YA EXISTE EL REPOSITORIO
+---------------------------
+
+   echo "data/proxmox.json" >> .gitignore
+   git rm --cached data/proxmox.json
+   git add .gitignore
+   git commit -m "Ignorar token de Proxmox"
+   git push

@@ -1,0 +1,90 @@
+name: rovska-netmap
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: rovska-netmap-db
+    network_mode: host
+    command:
+      - "mysqld"
+      - "--bind-address=127.0.0.1"
+      - "--innodb-file-per-table=1"
+      - "--lower-case-table-names=0"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+    volumes:
+      - "./db:/var/lib/mysql"
+    environment:
+      TZ: "${TZ}"
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "${MYSQL_DATABASE}"
+      MYSQL_USER: "${MYSQL_USER}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: rovska-netmap-redis
+    network_mode: host
+    command: ["redis-server", "--bind", "127.0.0.1", "--port", "6379"]
+    environment:
+      TZ: "${TZ}"
+    restart: unless-stopped
+
+  librenms:
+    image: librenms/librenms:latest
+    container_name: rovska-netmap
+    hostname: librenms
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - "./librenms:/data"
+      - "../../netmap/map:/opt/librenms/html/netmap:ro"
+    env_file:
+      - "./librenms.env"
+    environment:
+      TZ: "${TZ}"
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      PYTHONPATH: "/data/python"
+      DB_HOST: "127.0.0.1"
+      DB_NAME: "${MYSQL_DATABASE}"
+      DB_USER: "${MYSQL_USER}"
+      DB_PASSWORD: "${MYSQL_PASSWORD}"
+      DB_TIMEOUT: "60"
+      LIBRENMS_BASE_URL: "/"
+    restart: unless-stopped
+
+  dispatcher:
+    image: librenms/librenms:latest
+    container_name: rovska-netmap-dispatcher
+    hostname: librenms-dispatcher
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    depends_on:
+      - librenms
+      - redis
+    volumes:
+      - "./librenms:/data"
+    env_file:
+      - "./librenms.env"
+    environment:
+      TZ: "${TZ}"
+      PUID: "${PUID}"
+      PGID: "${PGID}"
+      PYTHONPATH: "/data/python"
+      DB_HOST: "127.0.0.1"
+      DB_NAME: "${MYSQL_DATABASE}"
+      DB_USER: "${MYSQL_USER}"
+      DB_PASSWORD: "${MYSQL_PASSWORD}"
+      DB_TIMEOUT: "60"
+      DISPATCHER_NODE_ID: "dispatcher1"
+      SIDECAR_DISPATCHER: "1"
+    restart: unless-stopped

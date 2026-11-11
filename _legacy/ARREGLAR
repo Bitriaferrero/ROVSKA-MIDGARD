@@ -1,0 +1,29 @@
+0 TOdo esto que te digo vamos a modificarlo en ROVSKAV2 en home.
+Copiaremos todo lo hecho al directorio nuevo.
+Es posible para tener asi 2 copias?
+Una vez copiado realizaremos las siguientes mejoras.
+
+
+1-En la izquierda, en la lista de ips se esta mostrando ips de un rango dado qeu 
+no dan respuesta o no existen en la red. Se podrian omitir al mostrarlas
+en la lista o poner un boton para ocultarlas?
+Me interesaria poder ver las ips que conforman la red, no todas las ips
+que conforman el rango den o no respuesta.
+Me puedes aconsejar o asesorar sobre esta medida si fuera necesario.
+
+
+2- Cuando he lanzado scaneo me muestras las ips a la izquierda en 
+listas de ips pero no se que sistema operativo es y version, me gustaria
+se mostrara justo debajo o despues de la ip este dato.
+
+Esta informacion tampcoo se muestra en resumen que pone SO desconocido o pone 
+que es un Linux (invitado Proxmox)
+
+Me gustaria que se visualizara si es un Mikrotik, Windows xp,10 ,11  o linux 
+debian, ubuntu y que version ejemplo ubuntu 16, Ubuntu 24 etc.
+
+Es posible? no se muetra ahora y esta implementado por un tema de permisos con nmap?
+Pregunta lo que necesites saber si tienes dudas lo las acciones descritas
+antes de actuar , gracias.
+
+

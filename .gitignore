@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Datos locales (nunca subir informes ni evidencias)
+data/rovska.db
+data/rovska.db-*
+data/work/
+data/reports/*
+!data/reports/.gitkeep
+data/evidence/*
+!data/evidence/.gitkeep
+evidence/*
+!evidence/.gitkeep
+
+# NETMAP / LibreNMS
+deploy/librenms/.env
+deploy/librenms/librenms.env
+deploy/librenms/ACCESO.txt
+deploy/librenms/db/
+deploy/librenms/librenms/
+netmap/map/*.json
+netmap/map/*.html
+
+# Configuración y secretos
+.env
+*.log
+.DS_Store
+data/proxmox.json
+data/

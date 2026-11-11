@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="description" content="ROVSKA — plataforma de auditoría de red con MITRE ATT&CK, PTES, OSSTMM, OWASP y CWE">
+  <title>ROVSKA · network audit platform</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0a0a'/%3E%3Cpath d='M7 9l9 7-9 7M17 9l9 7-9 7' stroke='%23fab283' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='24' cy='8' r='2' fill='%23e06c75'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand" id="brand" role="button" tabindex="0" title="Volver al panel general">
+        <div class="brand-mark" aria-hidden="true">▚</div>
+        <div>
+          <h1>ROVSKA</h1>
+          <p>network audit platform</p>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Vistas">
+        <button class="nav-btn active" data-view="overview" type="button">Panel</button>
+        <button class="nav-btn" data-view="operations" type="button">Operaciones</button>
+        <button class="nav-btn" data-view="tasks" type="button">Tareas<span class="nav-count" id="task-count" hidden></span></button>
+        <button class="nav-btn" data-view="attack" type="button">ATT&amp;CK</button>
+        <button class="nav-btn" data-view="frameworks" type="button">Marcos</button>
+        <button class="nav-btn" data-view="compare" type="button">Comparativa</button>
+        <button class="nav-btn" data-view="reports" type="button">Informes</button>
+        <button class="nav-btn" data-view="midgard" type="button">MIDGARD</button>
+        <button class="nav-btn" data-view="netmap" type="button">Netmap</button>
+        <button class="nav-btn" data-view="librenms" type="button">LibreNMS</button>
+        <button class="nav-btn" data-view="settings" type="button">Ajustes</button>
+      </nav>
+
+      <div class="top-meta" id="top-meta" aria-live="polite"></div>
+
+      <div class="top-actions">
+        <input
+          class="search"
+          id="search"
+          type="search"
+          placeholder="Buscar IP, SO, tipo, MAC…  ( / )"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Buscar hosts">
+        <button class="icon-btn" id="refresh" type="button" title="Recargar datos (R)" aria-label="Recargar datos">⟳</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="active-strip" id="active-strip" role="status" aria-live="polite" hidden></div>
+      <aside class="sidebar" id="sidebar" aria-label="Listado de hosts">
+        <div class="side-empty">Cargando hosts…</div>
+      </aside>
+      <section class="detail" id="detail" aria-live="polite">
+        <div class="empty">
+          <div class="glyph">▚</div>
+          <h2>ROVSKA</h2>
+          <p>Conectando con el servidor local…</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>ROVSKA · auditoría autorizada · ATT&amp;CK · PTES · OSSTMM · OWASP · CWE</span>
+      <span id="foot-meta"></span>
+    </footer>
+  </div>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <header class="modal-head">
+        <h2 id="modal-title">Detalle</h2>
+        <button class="icon-btn" id="modal-close" type="button" aria-label="Cerrar">✕</button>
+      </header>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

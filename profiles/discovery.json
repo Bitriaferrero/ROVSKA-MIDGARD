@@ -1,0 +1,15 @@
+{
+  "id": "discovery",
+  "label": "Descubrimiento",
+  "description": "Descubre hosts vivos sin escanear puertos ni SO.",
+  "mode": "discovery",
+  "scan": ["-sn"],
+  "version": false,
+  "os": false,
+  "timing": "-T4",
+  "ports_tcp": "",
+  "ports_udp": "",
+  "udp": false,
+  "scripts": [],
+  "timeout": 300
+}

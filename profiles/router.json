@@ -1,0 +1,15 @@
+{
+  "id": "router",
+  "label": "Router / CPE",
+  "description": "Puertos de administración de routers, MikroTik, SNMP y SSH.",
+  "mode": "scan",
+  "scan": ["-sS"],
+  "version": true,
+  "os": true,
+  "timing": "-T4",
+  "ports_tcp": "22,23,53,80,443,8291,8728,8729",
+  "ports_udp": "161",
+  "udp": true,
+  "scripts": ["banner", "http-title", "http-headers", "snmp-info", "ssh-hostkey", "ssl-cert"],
+  "timeout": 900
+}

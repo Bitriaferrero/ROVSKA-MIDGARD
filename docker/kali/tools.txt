@@ -1,0 +1,24 @@
+# Herramientas que ROVSKA espera encontrar dentro del contenedor.
+# El contenedor sigue funcionando si alguna falta: el doctor y el panel
+# la marcan como "no disponible" y el adaptador se omite.
+#
+# Red
+nmap
+arp-scan
+masscan
+# Web
+whatweb
+nikto
+nuclei
+ffuf
+testssl
+# Infraestructura
+ssh-audit
+enum4linux-ng
+snmpwalk
+dnsrecon
+smbclient
+# Ofensivas (dry-run por defecto; requieren ROVSKA_ALLOW_ATTACK=1)
+hydra
+msfconsole
+searchsploit

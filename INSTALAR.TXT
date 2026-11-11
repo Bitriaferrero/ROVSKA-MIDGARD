@@ -1,0 +1,112 @@
+INSTALAR ROVSKA-MIDGARD
+========================
+
+REQUISITOS
+- Linux (recomendado)
+- git
+- Docker (y tu usuario en el grupo docker)
+- python3
+- Internet la primera vez (descarga varios GB)
+
+No hace falta pip, npm ni instalar herramientas en el host.
+
+
+PASOS
+-----
+
+1) Clonar:
+
+   git clone <URL_DEL_REPO> ROVSKA-MIDGARD
+   cd ROVSKA-MIDGARD
+
+   Si falla por permisos:
+   chmod +x run.sh
+
+
+2) Crear configuración:
+
+   ./run.sh env
+
+
+3) Abrir el panel a la red (solo si lo vas a usar desde otro PC):
+
+   Edita el fichero .env y deja:
+
+   ROVSKA_HOST=0.0.0.0
+   ROVSKA_PORT=8780
+
+
+4) Crear base de datos y carpetas:
+
+   ./run.sh init
+
+
+5) Instalar y arrancar las herramientas (la primera vez tarda):
+
+   ./run.sh up
+
+
+6) Comprobar que todo está bien:
+
+   ./run.sh doctor
+
+
+7) Arrancar el panel:
+
+   ./run.sh serve
+
+
+8) Abrir en el navegador:
+
+   http://IP_DEL_ORDENADOR:8780/
+
+
+DEJARLO EN SEGUNDO PLANO
+------------------------
+
+   setsid nohup ./run.sh serve >> /tmp/rovska-panel.log 2>&1 < /dev/null &
+
+
+OPCIONAL: PROXMOX
+-----------------
+
+- Se configura en el panel: Ajustes -> Proxmox.
+- Endpoint: https://IP_DEL_PROXMOX:8006
+- Token de solo lectura con rol PVEAuditor.
+- Desmarca "Verificar TLS" si usa certificado propio.
+- El token NO va en el repositorio.
+
+
+OPCIONAL: LIBRENMS
+------------------
+
+- No se instala solo.
+- Requiere crear a mano deploy/librenms/.env, librenms.env y ACCESO.txt.
+- Después: ./run.sh librenms-up
+- Pasos detallados en netmap/LEEME.txt
+
+
+ANTES DE SUBIR A GITHUB
+-----------------------
+
+NO subir:
+- .env
+- data/proxmox.json   (contiene el token real)
+- deploy/librenms/.env
+- deploy/librenms/librenms.env
+- deploy/librenms/ACCESO.txt
+- data/rovska.db
+- informes y evidencias
+
+El .gitignore ya excluye casi todo, pero data/proxmox.json NO está excluido.
+
+
+COMANDOS ÚTILES
+---------------
+
+   ./run.sh              ayuda
+   ./run.sh status       estado
+   ./run.sh test         tests
+   ./run.sh doctor       diagnóstico
+   ./run.sh down         parar Docker
+   ./run.sh clean        limpiar caché Python (no borra datos)

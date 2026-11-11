@@ -1,0 +1,361 @@
+================================================================================
+ ROVSKA-MIDGARD - LEEME
+ Un proyecto, un panel, tres motores. Sin IA en runtime.
+================================================================================
+
+Directorio raiz:  ~/ROVSKA-MIDGARD
+
+  1. Arranque desde cero.
+  2. Operacion diaria.
+  3. Como funciona (para dibujar un esquema del codigo).
+  4. Prompt listo para pedir el esquema a una IA.
+  5. Limpieza y material conservado.
+
+
+================================================================================
+ 1. ARRANQUE DESDE CERO
+================================================================================
+
+1.1 REQUISITOS
+--------------------------------------------------------------------------------
+  - Docker Engine + docker compose.
+  - python3 en el host (backend, sin dependencias externas).
+  - nmap en el host (lo usa NETMAP para el fingerprint).
+  - Puerto 8780 libre (panel) y 8000 libre (LibreNMS).
+  - Contenedor/imagen rovvska/kali-tools (lo construye ./run.sh up).
+
+  Comprobar:
+      docker --version
+      docker compose version
+      python3 --version
+      nmap --version
+
+  IMPORTANTE: este Docker no puede publicar puertos (falla DNAT). Todo el stack
+  usa network_mode: host. No anadir "ports:" ni cambiar a bridge.
+
+1.2 CONFIGURACION
+--------------------------------------------------------------------------------
+  Ficheros de configuracion en la raiz:
+
+  .env  (ROVSKA; crear desde .env.example si falta)
+      ./run.sh env
+
+  deploy/librenms/.env  (plantilla)
+      TZ=Europe/Madrid
+      PUID=1000
+      PGID=1000
+      MYSQL_DATABASE=librenms
+      MYSQL_USER=librenms
+      MYSQL_PASSWORD=CAMBIAR_CLAVE_LARGA
+      NETMAP_PORT=8000
+
+  deploy/librenms/librenms.env  (plantilla)
+      MEMORY_LIMIT=512M
+      MAX_INPUT_VARS=1000
+      UPLOAD_MAX_SIZE=16M
+      OPCACHE_MEM_SIZE=128
+      CACHE_DRIVER=redis
+      SESSION_DRIVER=redis
+      REDIS_HOST=127.0.0.1
+      LIBRENMS_SNMP_COMMUNITY=CAMBIAR_COMUNIDAD_INTERNA
+      LIBRENMS_WEATHERMAP=false
+
+  Proteger secretos:
+      chmod 600 deploy/librenms/.env deploy/librenms/librenms.env \
+                deploy/librenms/ACCESO.txt
+
+1.3 ARRANCAR
+--------------------------------------------------------------------------------
+      cd ~/ROVSKA-MIDGARD
+      ./run.sh init
+      ./run.sh up                 # construye/arranca el contenedor Kali
+      ./run.sh librenms-up        # opcional: LibreNMS
+      ./run.sh serve              # panel en primer plano
+
+  En segundo plano:
+      setsid nohup ./run.sh serve >> /tmp/opencode/rovska-serve.log 2>&1 \
+          < /dev/null &
+
+  Comprobar:
+      curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8780/
+      curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/login
+
+1.4 PRIMERA VEZ DE LIBRENMS
+--------------------------------------------------------------------------------
+  Crear el administrador (solo una vez):
+
+      cd ~/ROVSKA-MIDGARD
+      ADMINPASS="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)"
+      docker compose -f deploy/librenms/compose.yml exec -T \
+          --user librenms librenms php lnms user:add admin \
+          -p "$ADMINPASS" -r admin -e admin@localhost -l "Administrador"
+      printf 'LibreNMS admin\nusuario: admin\ncontrasena: %s\nurl: http://192.168.88.252:8000\n' \
+          "$ADMINPASS" > deploy/librenms/ACCESO.txt
+      chmod 600 deploy/librenms/ACCESO.txt
+
+  Validar:
+      docker compose -f deploy/librenms/compose.yml exec -T \
+          --user librenms librenms php validate.php
+
+  Dependencias Python de LibreNMS (persisten en el volumen, no en el host):
+      docker exec -u root rovska-netmap pip3 install --no-cache-dir \
+          --target /data/python -r /opt/librenms/requirements.txt "setuptools<81"
+      docker exec -u root rovska-netmap chown -R librenms:librenms /data/python
+
+1.5 MAPA DE RED
+--------------------------------------------------------------------------------
+      cd ~/ROVSKA-MIDGARD
+      ./run.sh netmap wlan0
+      # o desde la UI: pestana Netmap -> "Actualizar mapa"
+
+  Genera:
+      netmap/map/scan.json
+      netmap/map/index.html
+  Y se sirve en:
+      http://<host>:8780/netmap/index.html
+
+1.6 TESTS
+--------------------------------------------------------------------------------
+      ./run.sh test
+      # ROVSKA: 104 tests (incluye Proxmox)
+      # MIDGARD: 62 tests
+
+1.7 PROXMOX (OPCIONAL, API DE SOLO LECTURA)
+--------------------------------------------------------------------------------
+  Objetivo: mostrar los nodos Proxmox y sus VM/LXC en la lista unificada sin
+  escanear el hipervisor ni ejecutar nada en el.
+
+  Crear el token en Proxmox:
+    Datacenter -> Permissions -> Users: usuario con rol PVEAuditor.
+    Datacenter -> Permissions -> API Tokens: crear token del usuario.
+    Anotar: usuario@realm!nombre_token  y el secreto (solo se muestra una vez).
+
+  Configurar en el panel:
+    Ajustes -> Proxmox
+      Endpoint:  https://192.168.88.10:8006
+      Token ID:  PVEAuditor@pve!rovska
+      Secreto:   (el del token)
+      [x] Verificar certificado TLS (desactivar solo con certificado propio)
+      [x] Activar enriquecimiento Proxmox
+      [x] Incluir VM/LXC en la lista unificada
+    Boton "Guardar y validar" o "Probar conexion".
+
+  Equivalente por entorno (sin fichero):
+    ROVSKA_PROXMOX_ENDPOINT=https://192.168.88.10:8006
+    ROVSKA_PROXMOX_TOKEN_ID=PVEAuditor@pve!rovska
+    ROVSKA_PROXMOX_TOKEN_SECRET=...
+    ROVSKA_PROXMOX_ENABLED=1
+    ROVSKA_PROXMOX_VERIFY_TLS=1
+    ROVSKA_PROXMOX_INCLUDE_IN_SCANS=1
+
+  Seguridad:
+    - El secreto se guarda en data/proxmox.json con permisos 600.
+    - El token es de solo lectura; la integracion solo hace GET.
+    - El navegador nunca recibe el secreto.
+    - Si la API falla, el escaneo y la lista siguen funcionando con aviso.
+
+  En la lista:
+    - El nodo Proxmox es la fila padre; el chevron despliega sus VM/LXC.
+    - Un invitado escaneado abre su ficha al pulsar su IP.
+    - Un invitado sin IP se muestra como "sin IP detectada".
+    - Solo se enriquecen nodos que ya estan en el contexto actual.
+
+
+================================================================================
+ 2. OPERACION DIARIA
+================================================================================
+
+  Panel unificado:   http://<host>:8780/  (un solo SPA)
+    - Hash internos: #midgard, #netmap, #librenms
+    - /midgard.html y /netmap.html redirigen al SPA
+    - Panel        auditoria ROVSKA (hosts, operaciones, ATT&CK, informes)
+    - Operaciones  lanzar herramientas y ver el catalogo disponible
+    - Tareas       historial, cancelar tareas activas y "Limpiar completadas"
+    - MIDGARD      perfiles, ejecuciones y evidencias
+    - Netmap       mapa, inventario y boton de actualizacion
+    - LibreNMS     vista embebida del servicio :8000
+    - Ajustes      configuracion, alcance y Proxmox (API de solo lectura)
+
+  Comandos:
+      ./run.sh status
+      ./run.sh midgard scan 192.168.88.0/24 -p quick -y
+      ./run.sh midgard ls
+      ./run.sh midgard show <run_id>
+      ./run.sh netmap wlan0
+      ./run.sh librenms-status
+      ./run.sh librenms-down
+      ./run.sh down
+
+  Logs:
+      /tmp/opencode/rovska-serve.log
+      docker compose -f deploy/librenms/compose.yml logs -f librenms
+
+  Datos:
+      data/                base ROVSKA, informes, evidencias, trabajo
+      evidence/            evidencias MIDGARD (manifest.json + informe)
+      netmap/map/          ultimo barrido y HTML
+      deploy/librenms/db/  MariaDB
+      deploy/librenms/librenms/  datos de LibreNMS
+
+
+================================================================================
+ 3. COMO FUNCIONA (PARA EL ESQUEMA DEL CODIGO)
+================================================================================
+
+3.1 COMPONENTES
+--------------------------------------------------------------------------------
+  [Navegador]
+      -> http://host:8780
+
+  [Panel ROVSKA]  rovvska/api.py (ThreadingHTTPServer, stdlib)
+      - sirve el SPA web/index.html + app.js + styles.css
+      - API /api/*
+      - integraciones.py lanza trabajos en segundo plano
+
+  [Motor ROVSKA]  rovvska/scanner.py, analyzer.py, report.py, db.py, jobs.py
+      - escaneos nmap en el contenedor Kali
+      - analisis, ATT&CK/PTES/OSSTMM/OWASP/CWE, informes
+      - SQLite en data/rovska.db
+
+  [Motor MIDGARD]  midgard/
+      - perfiles JSON en profiles/
+      - nmap en Docker, evidencia en evidence/
+      - sin IA, sin telemetria
+
+  [Motor NETMAP]  netmap/netmap.py + netmap/mapgen.py
+      - arp-scan dentro de rovska-kali
+      - ping + nmap desde el host
+      - JSON + HTML en netmap/map/
+
+  [Kali]  docker-compose.yml, docker/kali/
+      - imagen rovvska/kali-tools:latest
+      - contenedor rovska-kali, network_mode host
+
+  [LibreNMS]  deploy/librenms/compose.yml
+      - rovska-netmap (nginx/php-fpm :8000)
+      - rovska-netmap-db (MariaDB 127.0.0.1:3306)
+      - rovska-netmap-redis (Redis 127.0.0.1:6379)
+      - rovska-netmap-dispatcher (pollers)
+
+3.2 FLUJO DEL PANEL
+--------------------------------------------------------------------------------
+  Navegador -> api.py -> serve_static() -> web/index.html (SPA)
+  Navegador -> hash #midgard/#netmap/#librenms -> app.js renderiza la vista
+  Navegador -> /api/* -> db.py / scanner.py / report.py / integrations.py
+  POST /api/midgard/run -> integrations.start_midgard()
+      -> subprocess: python3 -m midgard scan ...
+      -> log en data/work/integrations/<job>.log
+  POST /api/netmap/scan -> integrations.start_netmap()
+      -> subprocess: python3 netmap/netmap.py --iface ...
+  GET /netmap/index.html -> serve_netmap() -> netmap/map/index.html
+  GET /api/midgard/jobs/<id> y /api/netmap/jobs/<id> -> polling del log
+  GET /api/tasks -> fusiona JOBS + SQLite + trabajos de integraciones
+  POST /api/reports/delete -> borra informe_* y vacía el historial de escaneos
+       (hosts, puertos, hallazgos, good_checks, tool_runs). Conserva
+       reports/imports/, anotaciones, eventos y operaciones. Rechaza si hay un
+       escaneo activo; admite {"purge_history": false} para borrar solo ficheros.
+
+3.3 DETECCION DE SO
+--------------------------------------------------------------------------------
+  - nmap -O --osscan-guess en Docker (root) con puertos abiertos y cerrados.
+  - Banners SSH/HTTP/SMB/SNMP y version de RouterOS en FTP/HTTP.
+  - Fabricante de la MAC (Apple, Samsung, LCFC, Raspberry Pi, VMware...).
+  - Sonda TTL best-effort: 64 Linux/Unix, 128 Windows, 255 equipo de red.
+  - Si nada responde, el host queda como "SO desconocido" con confianza baja.
+
+3.3 FLUJO DE MIDGARD
+--------------------------------------------------------------------------------
+  1. La UI envia target, perfil y "authorized".
+  2. integrations valida target/perfil y lanza el proceso.
+  3. midgard/cli.py -> scope.py valida alcance.
+  4. audit.py construye argv de nmap (sin shell).
+  5. docker.py ejecuta nmap en rovvska/kali-tools.
+  6. osdetect.py/nmap.py/report.py generan resultados.
+  7. evidence.py crea evidence/<fecha>-<perfil>-<target>/ con
+     manifest.json, XML/JSON y report.html.
+  8. La UI hace polling de /api/midgard/jobs/<id> y lista /api/midgard/runs.
+
+3.4 FLUJO DE NETMAP
+--------------------------------------------------------------------------------
+  1. netmap.py: docker exec rovska-kali arp-scan --localnet
+  2. Fallback si no hay contenedor: ip neigh show dev <iface>
+  3. Por host: ping() + nmap() en paralelo (ThreadPoolExecutor).
+  4. Escribe netmap/map/scan.json.
+  5. mapgen.py clasifica por fabricante/MAC y dibuja SVG radial.
+  6. Escribe netmap/map/index.html.
+  7. api.py lo sirve en /netmap/index.html.
+
+3.5 FICHEROS CLAVE
+--------------------------------------------------------------------------------
+  rovvska/api.py            servidor, rutas, estaticos, trabajos
+  rovvska/integrations.py   MIDGARD/NETMAP: jobs, perfiles, evidencias
+  rovvska/scanner.py        motor de escaneo ROVSKA
+  rovvska/analyzer.py       refinado de SO/servicios
+  rovvska/report.py         informes HTML/JSON/MD
+  rovvska/config.py         BASE_DIR, data_dir, web_dir, puertos
+  midgard/cli.py            CLI (scan, ls, show, report, msf, verify)
+  midgard/audit.py          orquesta nmap + evidencia
+  midgard/evidence.py       manifest.json, hashes, listado
+  midgard/config.py         profiles/, evidence/, imagen Docker
+  netmap/netmap.py          descubrimiento y JSON
+  netmap/mapgen.py          render HTML/SVG
+  web/index.html            panel ROVSKA (unico documento)
+  web/app.js                SPA: panel + MIDGARD + Netmap + LibreNMS
+  web/styles.css            estilos del panel
+  run.sh / Makefile         lanzadores
+
+3.6 RESTRICCIONES DE DISENO
+--------------------------------------------------------------------------------
+  - Un solo puerto para la UI (8780) y un solo login.
+  - LibreNMS sigue siendo un servicio aparte (:8000) enlazado desde la UI.
+  - Todo local: sin IA, sin nube, sin telemetria.
+  - Docker sin DNAT: network_mode host obligatorio.
+  - Secretos fuera de Git (.gitignore) y con permisos 600.
+  - ROVSKA conserva su panel y su comportamiento original.
+
+
+================================================================================
+ 4. PROMPT PARA PEDIR EL ESQUEMA A UNA IA
+================================================================================
+
+  "Con la descripcion de LEEME.txt, genera un esquema grafico (Mermaid o SVG)
+   del proyecto ROVSKA-MIDGARD con cuatro vistas:
+
+   A) Infraestructura: navegador, panel ROVSKA (:8780), contenedor
+      rovska-kali, LibreNMS (:8000, db :3306, redis :6379, dispatcher),
+      LAN y equipos SNMP. Etiqueta protocolo y puerto en cada arista.
+
+   B) Panel: navegador -> api.py -> {web estatico, SQLite, integrations.py}
+      -> {motor ROVSKA, MIDGARD, NETMAP}.
+
+   C) MIDGARD: UI -> /api/midgard/run -> integrations -> python -m midgard
+      -> scope -> nmap en Docker -> evidencia (manifest + report) -> UI.
+
+   D) NETMAP: netmap.py -> arp-scan en rovska-kali -> ping/nmap ->
+      scan.json -> mapgen.py -> index.html -> serve_netmap -> navegador.
+
+   Usa los nombres reales de ficheros y funciones. Linea discontinua para lo
+   opcional (SNMP, Proxmox, LibreNMS embebido). Incluye leyenda de colores."
+
+
+================================================================================
+ 5. LIMPIEZA Y MATERIAL CONSERVADO
+================================================================================
+
+  Se eliminaron los directorios antiguos ~/ROVSKA, ~/ROVSKA_MIDGARD y
+  ~/ROVSKA_NETMAP una vez migrados sus contenidos.
+
+  En _legacy/ se conserva material que no forma parte del programa:
+      ARREGLAR, ARREGLAR.save, README antiguo, midgard-run.sh
+
+  En docs/assets/ estan las imagenes originales (ROVSKA.png, esquema, etc.).
+
+  Copia de seguridad previa a la migracion:
+      /tmp/opencode/rovska-pre-unify-*.tar.gz
+
+  Caches de Python eliminadas. Los datos reales (data/, evidence/,
+  deploy/librenms/db/, deploy/librenms/librenms/) se conservan.
+
+================================================================================
+ Fin de LEEME.txt
+================================================================================
