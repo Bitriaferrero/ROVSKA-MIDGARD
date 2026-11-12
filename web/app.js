@@ -28,6 +28,27 @@ const PROFILES = [
   ["attack", "Ataque controlado"],
 ];
 
+/* Temas de color: solo cambian las variables CSS, nunca la estructura ni las
+   alertas semánticas. La elección se guarda en este navegador. */
+const THEME_KEY = "rovska.theme";
+const THEMES = [
+  { id: "default", name: "Actual", hint: "OpenCode · cálido", bg: "#0a0a0a", panel: "#141414", primary: "#fab283", crit: "#e06c75", ok: "#7fd88f" },
+  { id: "matrix", name: "Matrix", hint: "Negro y verde fósforo", bg: "#000000", panel: "#050a05", primary: "#00ff66", crit: "#ff4d4d", ok: "#00e676" },
+  { id: "nord", name: "Nord", hint: "Azul ártico, sobrio", bg: "#2e3440", panel: "#3b4252", primary: "#88c0d0", crit: "#bf616a", ok: "#a3be8c" },
+  { id: "dracula", name: "Dracula", hint: "Púrpura y neón", bg: "#1e1f29", panel: "#282a36", primary: "#bd93f9", crit: "#ff5555", ok: "#50fa7b" },
+  { id: "solarized-light", name: "Solarized Light", hint: "Claro y cálido", bg: "#fdf6e3", panel: "#f7f1df", primary: "#268bd2", crit: "#dc322f", ok: "#859900" },
+  { id: "gruvbox", name: "Gruvbox", hint: "Retro cálido", bg: "#1d2021", panel: "#282828", primary: "#fabd2f", crit: "#fb4934", ok: "#b8bb26" },
+  { id: "tokyo-night", name: "Tokyo Night", hint: "Azul nocturno", bg: "#1a1b26", panel: "#1f2335", primary: "#7aa2f7", crit: "#f7768e", ok: "#9ece6a" },
+  { id: "catppuccin", name: "Catppuccin", hint: "Suave y pastel", bg: "#1e1e2e", panel: "#181825", primary: "#cba6f7", crit: "#f38ba8", ok: "#a6e3a1" },
+];
+
+/* Visualización: la web clásica es el modo por defecto y no se altera. */
+const LAYOUT_KEY = "rovska.layout";
+const LAYOUTS = [
+  { id: "web", name: "Web clásica", hint: "Página completa con scroll normal. Es la vista de siempre." },
+  { id: "app", name: "Aplicación", hint: "Shell fijo con rail lateral y paneles con scroll interno." },
+];
+
 const state = {
   data: null,
   health: null,
@@ -66,6 +87,7 @@ const state = {
   listSort: { key: "ip", dir: 1 },
   listSortOpen: false,
   sideWidth: 440,
+  opFiles: { users: null, passwords: null, combo: null },
 };
 
 const LIST_PREFS_KEY = "rovska.listPrefs";
@@ -952,6 +974,30 @@ function operationForm() {
     <div class="field full">
       <label for="op-params">Parámetros (JSON)</label>
       <textarea id="op-params" name="params" placeholder='{"ports":[22,80],"module":"auxiliary/scanner/ssh/ssh_version"}'></textarea>
+      <span class="hint">Opciones de la herramienta. En Hydra puedes usar las listas JSON o los ficheros de abajo.</span>
+    </div>
+    <div class="full" data-hydra-files hidden>
+      <div class="section-title" style="margin-top:2px">Hydra · listas de credenciales</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="op-users-file">Usuarios (.txt)</label>
+          <input id="op-users-file" name="hydra_users" type="file" accept=".txt,.lst,text/plain">
+          <span class="hint">Un usuario por línea. Máximo 1 MB.</span>
+        </div>
+        <div class="field">
+          <label for="op-pass-file">Contraseñas (.txt)</label>
+          <input id="op-pass-file" name="hydra_passwords" type="file" accept=".txt,.lst,text/plain">
+          <span class="hint">Una contraseña por línea. Máximo 1 MB.</span>
+        </div>
+        <div class="field full">
+          <label for="op-combo-file">Combinado usuario:contraseña (opcional)</label>
+          <input id="op-combo-file" name="hydra_combo" type="file" accept=".txt,.lst,text/plain">
+          <span class="hint">Si lo usas, tiene prioridad sobre las dos listas anteriores.</span>
+        </div>
+      </div>
+      <div class="note" data-hydra-summary style="margin-top:8px">${hydraSummaryHtml()}</div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" name="check_breaches" checked> Comprobar si las contraseñas encontradas están filtradas (HIBP)</label>
+      <span class="hint">Solo se envían 5 caracteres del SHA-1; la contraseña no sale del equipo. Requiere conexión a Internet.</span>
     </div>
     <div class="field">
       <label class="check"><input type="checkbox" name="dry_run" checked> Dry-run (no toca el objetivo)</label>
@@ -964,6 +1010,87 @@ function operationForm() {
       <span class="hint">Hydra/Metasploit requieren ROVSKA_ALLOW_ATTACK=1 además de autorización.</span>
     </div>
   </form>`;
+}
+
+const OPERATION_FILE_FIELDS = {
+  users: { input: "hydra_users", label: "Usuarios" },
+  passwords: { input: "hydra_passwords", label: "Contraseñas" },
+  combo: { input: "hydra_combo", label: "Combinado" },
+};
+
+function hydraSummaryText() {
+  const users = state.opFiles.users;
+  const passwords = state.opFiles.passwords;
+  const combo = state.opFiles.combo;
+  if (combo) return `${combo.lines} pares usuario:contraseña.`;
+  if (users && passwords) {
+    const attempts = users.lines * passwords.lines;
+    const warning = attempts > 5000 ? " Aviso: puede tardar horas y disparar bloqueos." : "";
+    return `${users.lines} usuarios × ${passwords.lines} contraseñas = ${attempts} intentos.${warning}`;
+  }
+  if (users) return `${users.lines} usuarios (falta la lista de contraseñas).`;
+  if (passwords) return `${passwords.lines} contraseñas (falta la lista de usuarios).`;
+  return "Sin ficheros: se usarán los valores del JSON.";
+}
+
+function hydraSummaryHtml() {
+  const chips = Object.entries(OPERATION_FILE_FIELDS)
+    .map(([key, meta]) => {
+      const item = state.opFiles[key];
+      if (!item) return "";
+      return `<span class="chip">${meta.label}: <b>${esc(item.name)}</b> · ${item.lines} líneas</span>`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  return `${chips ? `${chips}<br>` : ""}${esc(hydraSummaryText())}`;
+}
+
+function syncOperationForm(form) {
+  if (!form) return;
+  const tool = form.querySelector('[name="tool"]')?.value || "";
+  const box = form.querySelector("[data-hydra-files]");
+  if (box) box.hidden = tool !== "hydra";
+  updateHydraSummary(form);
+}
+
+function updateHydraSummary(form) {
+  const note = form?.querySelector("[data-hydra-summary]");
+  if (note) note.innerHTML = hydraSummaryHtml();
+}
+
+async function loadOperationFile(form, input) {
+  const key = Object.keys(OPERATION_FILE_FIELDS).find(
+    (name) => OPERATION_FILE_FIELDS[name].input === input.name,
+  );
+  if (!key) return;
+  const file = input.files?.[0];
+  if (!file) {
+    state.opFiles[key] = null;
+    updateHydraSummary(form);
+    return;
+  }
+  if (file.size > 1_000_000) {
+    toast(`${file.name} supera 1 MB`, true);
+    input.value = "";
+    state.opFiles[key] = null;
+    updateHydraSummary(form);
+    return;
+  }
+  try {
+    const content = await file.text();
+    const lines = content.split(/\r?\n/).filter((line) => line.trim()).length;
+    if (!lines) {
+      toast(`${file.name} está vacío`, true);
+      input.value = "";
+      state.opFiles[key] = null;
+    } else {
+      state.opFiles[key] = { name: file.name, content, lines };
+    }
+  } catch (error) {
+    toast(`No se pudo leer ${file.name}: ${error.message}`, true);
+    state.opFiles[key] = null;
+  }
+  updateHydraSummary(form);
 }
 
 function renderOperations() {
@@ -1748,6 +1875,137 @@ function proxmoxSettingsCard() {
   </div>`;
 }
 
+function themeById(id) {
+  return THEMES.find((theme) => theme.id === id) || THEMES[0];
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme || "default";
+}
+
+function applyTheme(id, { persist = true } = {}) {
+  const theme = themeById(id);
+  if (theme.id === "default") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.dataset.theme = theme.id;
+  const scheme = document.querySelector('meta[name="color-scheme"]');
+  if (scheme) scheme.setAttribute("content", theme.id === "solarized-light" ? "light" : "dark");
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme.bg);
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_KEY, theme.id);
+    } catch {
+      /* almacenamiento no disponible */
+    }
+  }
+  return theme.id;
+}
+
+function loadTheme() {
+  let saved = "default";
+  try {
+    saved = localStorage.getItem(THEME_KEY) || "default";
+  } catch {
+    saved = "default";
+  }
+  applyTheme(saved, { persist: false });
+}
+
+function syncThemePicker() {
+  const active = currentTheme();
+  document.querySelectorAll("[data-theme-pick]").forEach((element) => {
+    const isActive = element.dataset.themePick === active;
+    element.classList.toggle("active", isActive);
+    element.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function themePicker() {
+  const active = currentTheme();
+  const cards = THEMES.map((theme) => {
+    const isActive = theme.id === active;
+    return `<button class="theme-pick${isActive ? " active" : ""}" type="button"
+      data-theme-pick="${theme.id}" aria-pressed="${isActive}"
+      title="Aplicar tema ${esc(theme.name)}">
+      <span class="theme-preview" style="background:${theme.bg}">
+        <i style="background:${theme.panel}"></i>
+        <i style="background:${theme.primary}"></i>
+        <i style="background:${theme.crit}"></i>
+        <i style="background:${theme.ok}"></i>
+      </span>
+      <span class="theme-name">${esc(theme.name)}</span>
+      <span class="theme-hint">${esc(theme.hint)}</span>
+    </button>`;
+  }).join("");
+  return `<div class="chart-card theme-card">
+    <div class="chart-title">Tema de color <span>se guarda en este navegador</span></div>
+    <div class="theme-grid">${cards}</div>
+    <div class="actions">
+      <button class="btn small" type="button" data-theme-reset>Restaurar tema por defecto</button>
+      <span class="hint">Solo cambian los colores: la estructura, las opciones y las alertas se mantienen.</span>
+    </div>
+  </div>`;
+}
+
+function currentLayout() {
+  return document.documentElement.dataset.layout === "app" ? "app" : "web";
+}
+
+function applyLayout(id, { persist = true } = {}) {
+  const layout = id === "app" ? "app" : "web";
+  if (layout === "app") document.documentElement.setAttribute("data-layout", "app");
+  else document.documentElement.removeAttribute("data-layout");
+  if (persist) {
+    try {
+      localStorage.setItem(LAYOUT_KEY, layout);
+    } catch {
+      /* almacenamiento no disponible */
+    }
+  }
+  window.scrollTo({ top: 0 });
+  return layout;
+}
+
+function loadLayout() {
+  let saved = "web";
+  try {
+    saved = localStorage.getItem(LAYOUT_KEY) || "web";
+  } catch {
+    saved = "web";
+  }
+  applyLayout(saved, { persist: false });
+}
+
+function syncLayoutPicker() {
+  const active = currentLayout();
+  document.querySelectorAll("[data-viz-pick]").forEach((element) => {
+    const isActive = element.dataset.vizPick === active;
+    element.classList.toggle("active", isActive);
+    element.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function layoutPicker() {
+  const active = currentLayout();
+  const cards = LAYOUTS.map((layout) => {
+    const isActive = layout.id === active;
+    return `<button class="viz-pick${isActive ? " active" : ""}" type="button"
+      data-viz-pick="${layout.id}" aria-pressed="${isActive}"
+      title="Usar visualización ${esc(layout.name)}">
+      <span class="viz-preview viz-${layout.id}" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="viz-name">${esc(layout.name)}</span>
+      <span class="viz-hint">${esc(layout.hint)}</span>
+    </button>`;
+  }).join("");
+  return `<div class="chart-card viz-card">
+    <div class="chart-title">Visualización <span>se guarda en este navegador</span></div>
+    <div class="viz-grid">${cards}</div>
+    <div class="actions">
+      <span class="hint">El modo aplicación solo se aplica en pantallas de escritorio; en móvil se mantiene la web clásica. La impresión no cambia.</span>
+    </div>
+  </div>`;
+}
+
 function renderSettings() {
   const settings = state.data?.settings || {};
   const health = state.health || {};
@@ -1769,6 +2027,8 @@ function renderSettings() {
   </section>
 
   <div class="charts">
+    ${themePicker()}
+    ${layoutPicker()}
     <div class="chart-card">
       <div class="chart-title">Runner</div>
       <div class="table-wrap"><table><tbody>
@@ -1880,7 +2140,7 @@ function watchOperation(operation) {
   const html = `
     <div class="hero-tags" style="margin-bottom:10px">
       <span class="chip">id <b>${esc(operation.id)}</b></span>
-      <span class="chip">estado <b>${esc(operation.status)}</b></span>
+      <span class="chip" id="op-status-chip">estado <b>${esc(operation.status)}</b></span>
       <span class="chip">${operation.dry_run ? "dry-run" : "ejecución real"}</span>
       <span class="chip">objetivo <b>${esc(operation.target)}</b></span>
     </div>
@@ -1904,9 +2164,20 @@ function watchOperation(operation) {
         /* ignorar */
       }
     };
-    stream.addEventListener("end", () => {
+    stream.addEventListener("end", async () => {
       stream.close();
       state.modalStream = null;
+      try {
+        const final = await api(`/api/operations/${encodeURIComponent(operation.id)}`);
+        if (final?.log) {
+          logEl.textContent = final.log;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+        const chip = document.getElementById("op-status-chip");
+        if (chip && final?.status) chip.innerHTML = `estado <b>${esc(final.status)}</b>`;
+      } catch {
+        /* si falla, se conserva el log en vivo */
+      }
       setTimeout(() => load(), 500);
     });
     stream.onerror = () => {
@@ -2641,6 +2912,7 @@ function renderDetail() {
   }
   if (state.view === "operations") {
     detail.innerHTML = renderOperations();
+    syncOperationForm(detail.querySelector('form[data-form="operation"]'));
     return;
   }
   if (state.view === "tasks") {
@@ -2817,6 +3089,22 @@ async function submitOperation(form) {
       return;
     }
   }
+  const files = {};
+  if (tool === "hydra") {
+    for (const key of Object.keys(OPERATION_FILE_FIELDS)) {
+      const item = state.opFiles[key];
+      if (item?.content) files[key] = { name: item.name, content: item.content };
+    }
+    params.check_breaches = fd.get("check_breaches") === "on";
+    if (!files.combo) {
+      const hasUsers = Boolean(files.users) || Boolean(params.users);
+      const hasPasswords = Boolean(files.passwords) || Boolean(params.passwords);
+      if (!hasUsers || !hasPasswords) {
+        toast("Hydra necesita usuarios y contraseñas: ficheros o JSON", true);
+        return;
+      }
+    }
+  }
   const button = form.querySelector('button[type="submit"]');
   if (button) button.disabled = true;
   try {
@@ -2826,11 +3114,13 @@ async function submitOperation(form) {
         tool,
         target,
         params,
+        files,
         dry_run: fd.get("dry_run") === "on",
         authorization: fd.get("authorization") === "on",
       }),
     });
     toast(`Operación ${result.operation_id} en cola`);
+    state.opFiles = { users: null, passwords: null, combo: null };
     const operation = await api(`/api/operations/${encodeURIComponent(result.operation_id)}`).catch(() => ({
       id: result.operation_id,
       tool,
@@ -3186,6 +3476,23 @@ document.addEventListener("click", (event) => {
 });
 
 detail.addEventListener("click", (event) => {
+  const themePick = event.target.closest("[data-theme-pick]");
+  if (themePick) {
+    applyTheme(themePick.dataset.themePick);
+    syncThemePicker();
+    return;
+  }
+  if (event.target.closest("[data-theme-reset]")) {
+    applyTheme("default");
+    syncThemePicker();
+    return;
+  }
+  const layoutPick = event.target.closest("[data-viz-pick]");
+  if (layoutPick) {
+    applyLayout(layoutPick.dataset.vizPick);
+    syncLayoutPicker();
+    return;
+  }
   const hostTarget = event.target.closest("[data-host]");
   if (hostTarget) {
     state.hostIp = hostTarget.dataset.host;
@@ -3341,6 +3648,18 @@ detail.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("change", (event) => {
+  const form = event.target.closest('form[data-form="operation"]');
+  if (!form) return;
+  if (event.target.name === "tool") {
+    syncOperationForm(form);
+    return;
+  }
+  if (Object.values(OPERATION_FILE_FIELDS).some((meta) => meta.input === event.target.name)) {
+    loadOperationFile(form, event.target);
+  }
+});
+
 document.addEventListener("submit", (event) => {
   const form = event.target.closest("form[data-form]");
   if (!form) return;
@@ -3420,6 +3739,8 @@ window.addEventListener("hashchange", applyHash);
 const initialView = String(location.hash || "").replace(/^#\/?/, "");
 if (VIEW_IDS.has(initialView)) state.view = initialView;
 
+loadTheme();
+loadLayout();
 render();
 load(true).then(() => loadTasks());
 setInterval(() => {

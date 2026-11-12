@@ -189,7 +189,15 @@ Una sola página, sin dependencias, con la estética de `AUDITORIA_PLUS/OVERSEER
 - **Informes**: listado, tamaño, descarga, regeneración del último escaneo e
   importación de informes JSON/XML externos.
 - **Ajustes**: runner, seguridad, rutas, comprobación de alcance y catálogo de
-  herramientas.
+  herramientas. Incluye **Tema de color** con ocho plantillas (Actual,
+  Matrix, Nord, Dracula, Solarized Light, Gruvbox, Tokyo Night y Catppuccin);
+  la elección se guarda en `localStorage` y no altera estructura, opciones ni
+  alertas semánticas. También incluye **Visualización**: **Web clásica** (por
+  defecto) o **Aplicación**. El modo aplicación se activa con
+  `data-layout="app"` en `<html>`, se guarda en `localStorage`
+  (`rovska.layout`) y su CSS queda aislado bajo
+  `@media screen and (min-width: 981px)`; sin ese atributo, o en móvil, se
+  mantiene la web clásica. La impresión usa siempre los estilos claros.
 
 Atajos: `/` busca, `R` recarga, `Esc` cierra el modal.
 
@@ -363,6 +371,8 @@ más relevantes:
 | `ROVSKA_ALLOW_ATTACK` | `0` | Habilita Hydra/Metasploit reales. |
 | `ROVSKA_MAX_HOSTS` | `256` | Máximo de hosts por barrido. |
 | `ROVSKA_TOOL_TIMEOUT` | `900` | Segundos por herramienta. |
+| `ROVSKA_HIBP_ENABLED` | `1` | Comprueba con HIBP si las contraseñas halladas están filtradas. |
+| `ROVSKA_HIBP_TIMEOUT` | `8` | Segundos de espera por consulta a HIBP. |
 | `ROVSKA_API_TOKEN` | vacío | Si se define, exige `X-ROVSKA-Token` en escrituras. |
 | `ROVSKA_HOST` / `ROVSKA_PORT` | `127.0.0.1` / `8780` | Escucha del panel. |
 

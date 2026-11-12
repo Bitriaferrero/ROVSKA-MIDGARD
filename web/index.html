@@ -7,6 +7,36 @@
   <meta name="theme-color" content="#0a0a0a">
   <meta name="description" content="ROVSKA — plataforma de auditoría de red con MITRE ATT&CK, PTES, OSSTMM, OWASP y CWE">
   <title>ROVSKA · network audit platform</title>
+  <script>
+    /* Aplica el tema guardado antes del primer pintado para evitar destellos. */
+    (function () {
+      var colors = {
+        matrix: "#000000",
+        nord: "#2e3440",
+        dracula: "#1e1f29",
+        "solarized-light": "#fdf6e3",
+        gruvbox: "#1d2021",
+        "tokyo-night": "#1a1b26",
+        catppuccin: "#1e1e2e"
+      };
+      try {
+        var theme = localStorage.getItem("rovska.theme") || "default";
+        if (colors[theme]) {
+          document.documentElement.setAttribute("data-theme", theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", colors[theme]);
+          var scheme = document.querySelector('meta[name="color-scheme"]');
+          if (scheme) scheme.setAttribute("content", theme === "solarized-light" ? "light" : "dark");
+        }
+        var layout = localStorage.getItem("rovska.layout") || "web";
+        if (layout === "app") {
+          document.documentElement.setAttribute("data-layout", "app");
+        }
+      } catch (error) {
+        /* sin localStorage: se queda el tema y la vista por defecto */
+      }
+    })();
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0a0a'/%3E%3Cpath d='M7 9l9 7-9 7M17 9l9 7-9 7' stroke='%23fab283' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='24' cy='8' r='2' fill='%23e06c75'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -22,17 +52,17 @@
       </div>
 
       <nav class="nav" id="nav" aria-label="Vistas">
-        <button class="nav-btn active" data-view="overview" type="button">Panel</button>
-        <button class="nav-btn" data-view="operations" type="button">Operaciones</button>
-        <button class="nav-btn" data-view="tasks" type="button">Tareas<span class="nav-count" id="task-count" hidden></span></button>
-        <button class="nav-btn" data-view="attack" type="button">ATT&amp;CK</button>
-        <button class="nav-btn" data-view="frameworks" type="button">Marcos</button>
-        <button class="nav-btn" data-view="compare" type="button">Comparativa</button>
-        <button class="nav-btn" data-view="reports" type="button">Informes</button>
-        <button class="nav-btn" data-view="midgard" type="button">MIDGARD</button>
-        <button class="nav-btn" data-view="netmap" type="button">Netmap</button>
-        <button class="nav-btn" data-view="librenms" type="button">LibreNMS</button>
-        <button class="nav-btn" data-view="settings" type="button">Ajustes</button>
+        <button class="nav-btn active" data-view="overview" data-label="Panel" title="Panel" type="button">Panel</button>
+        <button class="nav-btn" data-view="operations" data-label="Ops" title="Operaciones" type="button">Operaciones</button>
+        <button class="nav-btn" data-view="tasks" data-label="Tareas" title="Tareas" type="button">Tareas<span class="nav-count" id="task-count" hidden></span></button>
+        <button class="nav-btn" data-view="attack" data-label="ATT&amp;CK" title="ATT&amp;CK" type="button">ATT&amp;CK</button>
+        <button class="nav-btn" data-view="frameworks" data-label="Marcos" title="Marcos" type="button">Marcos</button>
+        <button class="nav-btn" data-view="compare" data-label="Comp." title="Comparativa" type="button">Comparativa</button>
+        <button class="nav-btn" data-view="reports" data-label="Informes" title="Informes" type="button">Informes</button>
+        <button class="nav-btn" data-view="midgard" data-label="MIDGARD" title="MIDGARD" type="button">MIDGARD</button>
+        <button class="nav-btn" data-view="netmap" data-label="Netmap" title="Netmap" type="button">Netmap</button>
+        <button class="nav-btn" data-view="librenms" data-label="LibreNMS" title="LibreNMS" type="button">LibreNMS</button>
+        <button class="nav-btn" data-view="settings" data-label="Ajustes" title="Ajustes" type="button">Ajustes</button>
       </nav>
 
       <div class="top-meta" id="top-meta" aria-live="polite"></div>

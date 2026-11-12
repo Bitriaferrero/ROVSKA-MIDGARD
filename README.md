@@ -42,6 +42,33 @@ Las vistas internas usan hash (`#midgard`, `#netmap`, `#librenms`). Las URLs ant
 - **Operaciones** reúne el formulario para lanzar herramientas y su catálogo
   completo con la disponibilidad de cada binario. En **Panel** solo queda un
   resumen con enlace al catálogo.
+- **Hydra** acepta las listas en el JSON (`users`/`passwords`) o en ficheros
+  subidos desde el formulario: usuarios, contraseñas o un combinado
+  `usuario:contraseña` (prioritario). Los ficheros se guardan con permisos
+  `600` en el directorio de la operación; en la base de datos solo queda el
+  nombre, el número de líneas y su SHA-256. Sigue siendo dry-run por defecto y
+  sin `ROVSKA_ALLOW_ATTACK=1` no ejecuta nada real. Los ficheros con miles de
+  entradas avisan de que el modo online puede tardar horas o disparar bloqueos.
+- Si Hydra encuentra credenciales y se marca la casilla, se comprueba si la
+  contraseña aparece en filtraciones conocidas usando **HIBP** con
+  k-anonymity: solo sale el prefijo de 5 caracteres del SHA-1, nunca la
+  contraseña. La comprobación es opcional, tolerante a fallos de red y se
+  desactiva con `ROVSKA_HIBP_ENABLED=0`.
+- **Ajustes → Tema de color** ofrece ocho plantillas: **Actual** (por defecto),
+  **Matrix**, **Nord**, **Dracula**, **Solarized Light**, **Gruvbox**,
+  **Tokyo Night** y **Catppuccin**. Solo cambian los colores: la estructura,
+  las opciones y las alertas se mantienen. En **Matrix** el verde es el color
+  de interfaz y las severidades siguen siendo rojo (crítico), naranja (alto),
+  ámbar (medio), azul (bajo) y gris (info). La elección se guarda en
+  `localStorage` de cada navegador, no en el servidor, y la impresión sigue
+  saliendo en blanco y negro aunque el tema sea oscuro.
+- **Ajustes → Visualización** permite elegir entre **Web clásica** (por
+  defecto) y **Aplicación**. La web clásica es la de siempre y no cambia si no
+  se elige otra cosa. El modo **Aplicación** añade un rail lateral fijo, una
+  barra superior compacta y paneles con scroll interno; es una segunda forma de
+  ver el mismo panel, no sustituye a la web. Solo se aplica en pantallas de
+  escritorio: en móvil se sigue mostrando la web clásica. La elección se guarda
+  en `localStorage` (`rovska.layout`) y la impresión no se ve afectada.
 - **Tareas → Limpiar completadas** oculta del listado las tareas ya terminadas
   sin borrar escaneos, informes, evidencia, anotaciones ni eventos. Las tareas
   activas siguen visibles siempre.
