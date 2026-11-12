@@ -8,11 +8,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from rovvska import hibp
 from rovvska.config import Settings
 from rovvska.models import Host, Port
 from rovvska.runner import CommandResult
 from rovvska.tools.base import ToolContext
+from rovvska.tools.hydra import HydraTool
 from rovvska.tools.metasploit import MetasploitTool
 from rovvska.tools.masscan import MasscanTool
 from rovvska.tools.nmap import NmapTool
@@ -303,6 +306,143 @@ class RunnerCancellationTests(unittest.TestCase):
         ctx.cancel_event = threading.Event()
         with self.assertRaises(Cancelled):
             ctx.run(["true"])
+
+
+class HydraTests(unittest.TestCase):
+    def _hydra_ctx(self, options: dict, *, settings: Settings | None = None):
+        runner = FakeRunner(files={}, name="docker")
+        ctx = _ctx(runner, [], options, target="10.0.0.5")
+        if settings is not None:
+            ctx.settings = settings
+        return runner, ctx
+
+    def test_requires_explicit_lists(self) -> None:
+        runner, ctx = self._hydra_ctx({})
+        result = HydraTool().run(ctx)
+        self.assertTrue(result.skipped)
+        self.assertIn("users", result.error)
+        self.assertEqual(runner.calls, [])
+
+    def test_dry_run_with_json_lists(self) -> None:
+        runner, ctx = self._hydra_ctx({"users": "ana,luis", "passwords": ["uno", "dos"]})
+        result = HydraTool().run(ctx)
+        self.assertTrue(result.ok)
+        self.assertTrue(result.meta["dry_run"])
+        self.assertEqual(result.meta["planned"]["users"], 2)
+        self.assertEqual(result.meta["planned"]["passwords"], 2)
+        self.assertEqual(runner.calls, [])
+
+    def test_uploaded_files_override_json(self) -> None:
+        runner, ctx = self._hydra_ctx(
+            {
+                "users": "json1,json2,json3",
+                "passwords": ["json"],
+                "users_file": "u.txt",
+                "passwords_file": "p.txt",
+            }
+        )
+        ctx.path("u.txt").write_text("ana\nluis\n", encoding="utf-8")
+        ctx.path("p.txt").write_text("uno\ndos\n", encoding="utf-8")
+        result = HydraTool().run(ctx)
+        self.assertEqual(result.meta["planned"]["users"], 2)
+        self.assertEqual(result.meta["planned"]["passwords"], 2)
+        self.assertEqual(result.meta["planned"]["source"], "file")
+
+    def test_combo_file_uses_dash_c(self) -> None:
+        settings = Settings(allow_attack=True, hibp_enabled=False)
+        runner, ctx = self._hydra_ctx(
+            {
+                "combo_file": "c.txt",
+                "execute": True,
+                "authorization": True,
+            },
+            settings=settings,
+        )
+        ctx.path("c.txt").write_text("ana:uno\nluis:dos\n", encoding="utf-8")
+        runner.files = {"hydra_result.txt": ""}
+        result = HydraTool().run(ctx)
+        self.assertTrue(result.ok)
+        self.assertIn("-C", runner.calls[0])
+        self.assertNotIn("-L", runner.calls[0])
+        self.assertEqual(result.meta["attempts"], "2")
+
+    def test_combo_dry_run_counts_pairs(self) -> None:
+        _, ctx = self._hydra_ctx({"combo_file": "c.txt"})
+        ctx.path("c.txt").write_text("ana:uno\nluis:dos\nsin_formato\n", encoding="utf-8")
+        result = HydraTool().run(ctx)
+        self.assertEqual(result.meta["planned"]["combos"], 2)
+
+    def test_breach_check_enriches_finding(self) -> None:
+        settings = Settings(allow_attack=True, hibp_enabled=True)
+        runner, ctx = self._hydra_ctx(
+            {
+                "users": ["ana"],
+                "passwords": ["secreto"],
+                "execute": True,
+                "authorization": True,
+                "check_breaches": True,
+            },
+            settings=settings,
+        )
+        runner.files = {
+            "hydra_result.txt": "[22][ssh] host: 10.0.0.5   login: ana   password: secreto\n"
+        }
+        breach = hibp.BreachResult(checked=True, found=True, count=42)
+        with patch("rovvska.hibp.check_password", return_value=breach):
+            result = HydraTool().run(ctx)
+        self.assertEqual(result.findings[0].severity, "CRÍTICO")
+        self.assertIn("42", result.findings[0].evidence)
+        self.assertIn("breached", result.findings[0].tags)
+        self.assertEqual(result.meta["hibp"][0]["count"], 42)
+
+    def test_missing_file_is_reported(self) -> None:
+        _, ctx = self._hydra_ctx({"users_file": "no-existe.txt", "passwords": ["x"]})
+        result = HydraTool().run(ctx)
+        self.assertTrue(result.skipped)
+        self.assertIn("no se pudo leer", result.error)
+
+
+class HibpTests(unittest.TestCase):
+    class _Response:
+        def __init__(self, body: str):
+            self.body = body.encode("ascii")
+
+        def read(self) -> bytes:
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):  # noqa: ANN002
+            return False
+
+    def test_found_password_sends_only_prefix(self) -> None:
+        import hashlib
+
+        password = "secreto"
+        digest = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+        with patch(
+            "rovvska.hibp.urlopen", return_value=self._Response(f"{digest[5:]}:7\n")
+        ) as mocked:
+            result = hibp.check_password(password, timeout=1)
+        self.assertTrue(result.checked)
+        self.assertTrue(result.found)
+        self.assertEqual(result.count, 7)
+        request = mocked.call_args[0][0]
+        self.assertTrue(request.full_url.endswith(digest[:5]))
+
+    def test_password_not_found(self) -> None:
+        with patch("rovvska.hibp.urlopen", return_value=self._Response("AAAA:1\n")):
+            result = hibp.check_password("otra", timeout=1)
+        self.assertTrue(result.checked)
+        self.assertFalse(result.found)
+        self.assertEqual(result.count, 0)
+
+    def test_network_error_is_not_fatal(self) -> None:
+        with patch("rovvska.hibp.urlopen", side_effect=OSError("sin red")):
+            result = hibp.check_password("otra", timeout=1)
+        self.assertFalse(result.checked)
+        self.assertIn("sin red", result.error)
 
 
 if __name__ == "__main__":

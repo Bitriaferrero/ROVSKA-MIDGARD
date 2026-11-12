@@ -65,6 +65,10 @@ class Settings:
     max_hosts: int = 256
     tool_timeout: int = 900
 
+    hibp_enabled: bool = True
+    hibp_timeout: int = 8
+    hibp_api: str = "https://api.pwnedpasswords.com/range/"
+
     opencode_enabled: bool = True
     opencode_bin: str = "opencode"
     opencode_model: str = "opencode/deepseek-v4.1-flash-free"
@@ -110,6 +114,12 @@ def load_settings() -> Settings:
         allow_attack=_env_bool("ROVSKA_ALLOW_ATTACK", False),
         max_hosts=_env_int("ROVSKA_MAX_HOSTS", 256),
         tool_timeout=_env_int("ROVSKA_TOOL_TIMEOUT", 900),
+        hibp_enabled=_env_bool("ROVSKA_HIBP_ENABLED", True),
+        hibp_timeout=_env_int("ROVSKA_HIBP_TIMEOUT", 8),
+        hibp_api=os.environ.get(
+            "ROVSKA_HIBP_API", "https://api.pwnedpasswords.com/range/"
+        ).strip()
+        or "https://api.pwnedpasswords.com/range/",
         opencode_enabled=_env_bool("ROVSKA_OPENCODE_ENABLED", True),
         opencode_bin=os.environ.get("ROVSKA_OPENCODE_BIN", "opencode").strip() or "opencode",
         opencode_model=os.environ.get(

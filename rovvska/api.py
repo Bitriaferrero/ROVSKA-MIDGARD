@@ -17,6 +17,7 @@ Rutas principales:
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import mimetypes
@@ -56,6 +57,72 @@ TYPE_OPTIONS = [
 API_VERSION = "1.0.0"
 _TOOLS_CACHE: dict = {"at": 0.0, "rows": []}
 _HEALTH_CACHE: dict = {"at": 0.0, "data": {}}
+
+# Ficheros que el formulario de Operaciones puede adjuntar. Solo se guardan en
+# el directorio de trabajo de la operación; en la base de datos queda el nombre,
+# el número de líneas y el SHA-256, nunca el contenido.
+UPLOAD_FIELDS = {
+    "users": ("users_file", "hydra_users_upload.txt", "usuarios"),
+    "passwords": ("passwords_file", "hydra_passwords_upload.txt", "contraseñas"),
+    "combo": ("combo_file", "hydra_combo_upload.txt", "pares usuario:contraseña"),
+}
+UPLOAD_MAX_BYTES = 1_000_000
+UPLOAD_MAX_LINE = 4_096
+
+
+def _store_operation_files(operation_id: str, files: dict) -> tuple[dict, str]:
+    """Guarda las listas subidas y devuelve solo sus metadatos.
+
+    El contenido se escribe con permisos ``600`` dentro del directorio de la
+    operación. El JSON de parámetros que se persiste no incluye contraseñas.
+    """
+
+    workdir = SETTINGS.work_dir / operation_id
+    try:
+        workdir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {}, f"no se pudo preparar el directorio de la operación: {exc}"
+    meta: dict = {}
+    for key, entry in files.items():
+        config = UPLOAD_FIELDS.get(key)
+        if config is None:
+            return {}, f"campo de fichero desconocido: {key}"
+        param, filename, label = config
+        if not isinstance(entry, dict):
+            return {}, f"formato de fichero no válido para {label}"
+        content = entry.get("content")
+        if not isinstance(content, str) or not content.strip():
+            return {}, f"el fichero de {label} está vacío"
+        if "\x00" in content:
+            return {}, f"el fichero de {label} no es texto válido"
+        if len(content.encode("utf-8")) > UPLOAD_MAX_BYTES:
+            return {}, f"el fichero de {label} supera 1 MB"
+        lines: list[str] = []
+        seen: set[str] = set()
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line in seen:
+                continue
+            if key == "combo" and ":" not in line:
+                continue
+            seen.add(line)
+            lines.append(line)
+        if not lines:
+            return {}, f"el fichero de {label} está vacío"
+        if any(len(line) > UPLOAD_MAX_LINE for line in lines):
+            return {}, f"el fichero de {label} tiene líneas demasiado largas"
+        path = workdir / filename
+        try:
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.chmod(path, 0o600)
+        except OSError as exc:
+            return {}, f"no se pudo guardar el fichero de {label}: {exc}"
+        meta[param] = filename
+        meta[f"{key}_lines"] = len(lines)
+        meta[f"{key}_sha256"] = hashlib.sha256(
+            "\n".join(lines).encode("utf-8")
+        ).hexdigest()
+    return meta, ""
 
 
 def _ip_key(value: str):
@@ -1157,7 +1224,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self.guard_write():
             return
         try:
-            body = self.read_json(limit=8_000_000 if path == "/api/import-report" else 2_000_000)
+            body_limit = (
+                8_000_000
+                if path == "/api/import-report"
+                else 6_000_000
+                if path == "/api/operations"
+                else 2_000_000
+            )
+            body = self.read_json(limit=body_limit)
             if path == "/api/scans":
                 return self.start_scan(body)
             if path == "/api/operations":
@@ -1313,7 +1387,7 @@ class Handler(BaseHTTPRequestHandler):
     def start_operation(self, body: dict) -> None:
         tool_name = str(body.get("tool", "")).strip()
         target = str(body.get("target", "")).strip()
-        params = body.get("params") if isinstance(body.get("params"), dict) else {}
+        params = dict(body.get("params") or {}) if isinstance(body.get("params"), dict) else {}
         authorization = bool(body.get("authorization"))
         dry_run = bool(body.get("dry_run", True))
         scan_id = body.get("scan_id") or None
@@ -1326,6 +1400,14 @@ class Handler(BaseHTTPRequestHandler):
         if tool.spec.requires_attack and not SETTINGS.allow_attack:
             dry_run = True
         operation_id = db.new_id("op")
+        files = body.get("files") if isinstance(body.get("files"), dict) else {}
+        if files:
+            if tool_name != "hydra":
+                return self.send_error_json(400, "esta herramienta no admite ficheros")
+            stored, error = _store_operation_files(operation_id, files)
+            if error:
+                return self.send_error_json(400, error)
+            params.update(stored)
         db.execute(
             "INSERT INTO operations (id, scan_id, kind, tool, target, params_json, status, risk_level, dry_run, started_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
